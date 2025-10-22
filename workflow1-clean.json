@@ -38,7 +38,7 @@
       "parameters": {
         "dataTableId": {
           "__rl": true,
-          "value": "CoqaEALFhieggocg",
+          "value": "YOUR_DATATABLE_ID",
           "mode": "list",
           "cachedResultName": "wazuh_alerts"
         },
@@ -77,7 +77,8 @@
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "wazuh-alert",
+        "path": "wazuh/ingest-YOUR_WEBHOOK_TOKEN",
+        "authentication": "headerAuth",
         "options": {}
       },
       "id": "2bf8ca80-7a8a-408e-96b3-0d9d162d2073",
@@ -88,7 +89,13 @@
         -400,
         32
       ],
-      "webhookId": "wazuh-alert-receiver"
+      "webhookId": "wazuh-alert-receiver",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_HEADER_AUTH_ID",
+          "name": "Header Wazuh"
+        }
+      }
     },
     {
       "parameters": {
@@ -144,12 +151,12 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "",
+  "versionId": "YOUR_VERSION_ID",
   "meta": {
     "templateCredsSetupCompleted": false,
-    "instanceId": "00000000000000000000000000000000000000000000000000000000000000000000"
+    "instanceId": "YOUR_INSTANCE_ID"
   },
-  "id": "",
+  "id": "YOUR_WORKFLOW_ID",
   "tags": [
     {
       "createdAt": "2025-10-11T18:03:20.491Z",

@@ -23,7 +23,7 @@
         "operation": "get",
         "dataTableId": {
           "__rl": true,
-          "value": "CoqaEALFhieggocg",
+          "value": "YOUR_DATATABLE_ID",
           "mode": "list",
           "cachedResultName": "wazuh_alerts"
         },
@@ -96,8 +96,8 @@
       "position": [48, -176],
       "credentials": {
         "openAiApi": {
-          "id": "P3KoR7u3FAeYPnAF",
-          "name": "Conta OpenAI"
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "[INFRA] Wazuh Automation"
         }
       }
     },
@@ -147,13 +147,13 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://hubsoft.bitrix24.com.br/rest/97/gd8csgsa5mc0a9qp/im.message.add.json",
+        "url": "https://YOUR_DOMAIN.bitrix24.com.br/rest/YOUR_USER_ID/YOUR_WEBHOOK_TOKEN/im.message.add.json",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
             {
               "name": "DIALOG_ID",
-              "value": "chat14427"
+              "value": "chatYOUR_CHAT_ID"
             },
             {
               "name": "MESSAGE",
@@ -171,8 +171,8 @@
     },
     {
       "parameters": {
-        "fromEmail": "noreply@your-company.com",
-        "toEmail": "security-team@your-company.com",
+        "fromEmail": "your-email@example.com",
+        "toEmail": "your-email@example.com",
         "subject": "=Relatório de Segurança Wazuh - {{ $json.report_date }}",
         "emailType": "html",
         "text": "={{ $json.html_report }}",
@@ -185,8 +185,8 @@
       "position": [944, -176],
       "credentials": {
         "smtp": {
-          "id": "4wuqvlEe5wHK9R9P",
-          "name": "SMTP account"
+          "id": "YOUR_SMTP_CREDENTIAL_ID",
+          "name": "SOC - SMTP"
         }
       }
     },
@@ -205,7 +205,7 @@
         "operation": "update",
         "dataTableId": {
           "__rl": true,
-          "value": "CoqaEALFhieggocg",
+          "value": "YOUR_DATATABLE_ID",
           "mode": "list",
           "cachedResultName": "wazuh_alerts"
         },
@@ -244,7 +244,7 @@
         "operation": "get",
         "dataTableId": {
           "__rl": true,
-          "value": "CoqaEALFhieggocg",
+          "value": "YOUR_DATATABLE_ID",
           "mode": "list",
           "cachedResultName": "wazuh_alerts"
         },
@@ -272,7 +272,7 @@
         "operation": "deleteRows",
         "dataTableId": {
           "__rl": true,
-          "value": "CoqaEALFhieggocg",
+          "value": "YOUR_DATATABLE_ID",
           "mode": "list",
           "cachedResultName": "wazuh_alerts"
         },
@@ -331,9 +331,12 @@
   "pinData": {},
   "active": false,
   "settings": { "executionOrder": "v1" },
-  "versionId": "",
-  "meta": { "instanceId": "00000000000000000000000000000000000000000000000000000000000000000000" },
-  "id": "",
+  "versionId": "YOUR_VERSION_ID",
+  "meta": { 
+    "templateCredsSetupCompleted": true,
+    "instanceId": "YOUR_INSTANCE_ID" 
+  },
+  "id": "YOUR_WORKFLOW_ID",
   "tags": [
     { "id": "tag-wazuh", "name": "wazuh", "createdAt": "2025-10-11T18:03:20.491Z", "updatedAt": "2025-10-11T18:03:20.491Z" },
     { "id": "tag-ai-agent", "name": "ai-agent", "createdAt": "2025-10-13T16:45:52.069Z", "updatedAt": "2025-10-13T16:45:52.069Z" },

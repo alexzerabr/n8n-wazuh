@@ -109,6 +109,7 @@ Um sistema inteligente de análise de alertas baseado em IA que:
 - **Wazuh** (v4.0+): Sistema de monitoramento de segurança
 - **OpenAI API**: Acesso ao modelo de IA (GPT-4 Turbo)
 - **SMTP**: Servidor de email para entrega de relatórios
+- **Bitrix24** (opcional): Plataforma de colaboração para notificações em tempo real via chat
 
 > **Nota:** Este sistema usa o recurso nativo de Tabelas de Dados do n8n - nenhum banco de dados externo necessário!
 
@@ -160,6 +161,19 @@ Um sistema inteligente de análise de alertas baseado em IA que:
 ---
 
 ## 🚀 Instalação e Configuração
+
+> **⚠️ IMPORTANTE - Substituir Placeholders:**
+> Os arquivos JSON dos workflows contêm placeholders que devem ser substituídos por suas credenciais reais:
+> - `YOUR_DATATABLE_ID` → ID da sua tabela de dados
+> - `YOUR_PROJECT_ID` → ID do seu projeto n8n
+> - `YOUR_WEBHOOK_TOKEN` → Token único para o webhook
+> - `YOUR_HEADER_AUTH_ID` → ID da credencial de autenticação
+> - `YOUR_OPENAI_CREDENTIAL_ID` → ID da credencial OpenAI
+> - `YOUR_SMTP_CREDENTIAL_ID` → ID da credencial SMTP
+> - `YOUR_DOMAIN.bitrix24.com.br` → Seu domínio Bitrix24
+> - `YOUR_USER_ID` → Seu ID de usuário Bitrix24
+> - `chatYOUR_CHAT_ID` → ID do chat Bitrix24
+> - `your-email@example.com` → Seu endereço de email
 
 ### Passo 1: Criar Tabela de Dados
 
@@ -231,8 +245,9 @@ Um sistema inteligente de análise de alertas baseado em IA que:
 
 1. Abra o workflow **Coleta de Alertas Wazuh**
 2. Clique no node **Wazuh Webhook**
-3. Copie a URL do webhook: `https://sua-instancia-n8n.com/webhook/wazuh-alert`
-4. Atualize o node **Inserir na Tabela de Dados**:
+3. Configure autenticação via Header (recomendado para segurança)
+4. Copie a URL do webhook: `https://sua-instancia-n8n.com/webhook/wazuh/ingest-YOUR_WEBHOOK_TOKEN`
+5. Atualize o node **Inserir na Tabela de Dados**:
    - Selecione sua tabela `wazuh_alerts`
    - Verifique o mapeamento de colunas
 
@@ -240,9 +255,9 @@ Um sistema inteligente de análise de alertas baseado em IA que:
 
 1. Abra o workflow **Análise e Relatórios Diários Wazuh com Memória de IA**
 2. Atualize o node **Enviar Relatório por Email**:
-   - **De (fromEmail)**: `noreply@sua-empresa.com`
-   - **Para (toEmail)**: `equipe-seguranca@sua-empresa.com`
-   - Selecione sua credencial SMTP
+   - **De (fromEmail)**: `your-email@example.com`
+   - **Para (toEmail)**: `your-email@example.com`
+   - Selecione sua credencial SMTP configurada
 3. Atualize o node **Análise de IA via OpenAI GPT**:
    - Selecione sua credencial OpenAI
 4. Verifique se todos os nodes **Data Table** apontam para `wazuh_alerts`
@@ -256,12 +271,17 @@ No seu servidor Wazuh, edite `/var/ossec/etc/ossec.conf`:
 <ossec_config>
   <integration>
     <name>custom-webhook</name>
-    <hook_url>https://sua-instancia-n8n.com/webhook/wazuh-alert</hook_url>
+    <hook_url>https://sua-instancia-n8n.com/webhook/wazuh/ingest-YOUR_WEBHOOK_TOKEN</hook_url>
     <level>3</level>
     <alert_format>json</alert_format>
   </integration>
 </ossec_config>
 ```
+
+**Nota de Segurança:** Recomenda-se usar autenticação via Header. Configure no n8n:
+1. Crie uma credencial **Header Auth** 
+2. Defina um token seguro (ex: `X-Wazuh-Auth: seu-token-secreto-aqui`)
+3. Configure o webhook para usar essa credencial
 
 Reinicie o gerenciador Wazuh:
 
@@ -290,7 +310,8 @@ Recebe alertas Wazuh via webhook e os armazena em formato estruturado para anál
 // Configuração
 {
   "httpMethod": "POST",
-  "path": "wazuh-alert"
+  "path": "wazuh/ingest-YOUR_WEBHOOK_TOKEN",
+  "authentication": "headerAuth"
 }
 ```
 
@@ -386,8 +407,9 @@ return { json: summary };
 
 ```bash
 # Testar webhook com alerta de exemplo
-curl -X POST https://sua-instancia-n8n.com/webhook/wazuh-alert \
+curl -X POST https://sua-instancia-n8n.com/webhook/wazuh/ingest-YOUR_WEBHOOK_TOKEN \
   -H "Content-Type: application/json" \
+  -H "X-Wazuh-Auth: seu-token-secreto-aqui" \
   -d '{
     "agent": {
       "name": "test-server",
@@ -714,7 +736,7 @@ GENERIC_TIMEZONE=America/Sao_Paulo
 <!-- /var/ossec/etc/ossec.conf -->
 <integration>
   <name>custom-webhook</name>
-  <hook_url>https://sua-instancia-n8n.com/webhook/wazuh-alert</hook_url>
+  <hook_url>https://sua-instancia-n8n.com/webhook/wazuh/ingest-YOUR_WEBHOOK_TOKEN</hook_url>
   <level>3</level> <!-- Severidade mínima -->
   <rule_id>510,518,519,5710</rule_id> <!-- Regras específicas (opcional) -->
   <alert_format>json</alert_format>
@@ -746,8 +768,8 @@ Atualize o destinatário no node **Enviar Relatório por Email**:
 
 ```javascript
 {
-  "fromEmail": "noreply@sua-empresa.com",
-  "toEmail": "equipe-seguranca@sua-empresa.com",
+  "fromEmail": "your-email@example.com",
+  "toEmail": "your-email@example.com",
   "subject": "Relatório de Segurança Wazuh - {{ $json.report_date }}",
   "text": "={{ $json.html_report }}"
 }
@@ -769,8 +791,9 @@ Atualize o destinatário no node **Enviar Relatório por Email**:
 tail -f /var/ossec/logs/ossec.log | grep integration
 
 # Verificar conectividade de rede
-curl -X POST https://sua-instancia-n8n.com/webhook/wazuh-alert \
+curl -X POST https://sua-instancia-n8n.com/webhook/wazuh/ingest-YOUR_WEBHOOK_TOKEN \
   -H "Content-Type: application/json" \
+  -H "X-Wazuh-Auth: seu-token-secreto-aqui" \
   -d '{"test": "data"}'
 
 # Verificar configuração de integração Wazuh
@@ -844,8 +867,8 @@ const minAlertsPerHost = 10; // Aumentar de 5 para 10
 
 // Verificar configuração do node de email:
 {
-  "fromEmail": "noreply@sua-empresa.com",
-  "toEmail": "destinatario@empresa.com",
+  "fromEmail": "your-email@example.com",
+  "toEmail": "your-email@example.com",
   "emailType": "html",
   "text": "={{ $json.html_report }}"
 }
@@ -898,18 +921,18 @@ Agregar Todos os Resultados
 
 **URL do Webhook Bitrix24:**
 ```
-https://hubsoft.bitrix24.com.br/rest/97/gd8csgsa5mc0a9qp/im.message.add.json
+https://YOUR_DOMAIN.bitrix24.com.br/rest/YOUR_USER_ID/YOUR_WEBHOOK_TOKEN/im.message.add.json
 ```
 
 **Chat de Destino:**
-- Chat ID: `chat14427`
+- Chat ID: `chatYOUR_CHAT_ID`
 
 **Método:** POST
 
 **Parâmetros:**
 ```json
 {
-  "DIALOG_ID": "chat14427",
+  "DIALOG_ID": "chatYOUR_CHAT_ID",
   "MESSAGE": "Mensagem formatada em BBCode"
 }
 ```
@@ -982,7 +1005,7 @@ No workflow, edite o node **Enviar para Bitrix24**:
 
 ```json
 {
-  "DIALOG_ID": "chat99999",  // Seu chat ID
+  "DIALOG_ID": "chatYOUR_CHAT_ID",  // Seu chat ID
   "MESSAGE": "={{ $json.bitrix_message }}"
 }
 ```
@@ -1030,8 +1053,8 @@ Edite o node **Gerar Alertas Bitrix** para personalizar a mensagem BBCode.
 
 **Teste manual:**
 ```bash
-curl -X POST "https://hubsoft.bitrix24.com.br/rest/97/gd8csgsa5mc0a9qp/im.message.add.json" \
-  -d "DIALOG_ID=chat14427" \
+curl -X POST "https://YOUR_DOMAIN.bitrix24.com.br/rest/YOUR_USER_ID/YOUR_WEBHOOK_TOKEN/im.message.add.json" \
+  -d "DIALOG_ID=chatYOUR_CHAT_ID" \
   -d "MESSAGE=Teste de mensagem"
 ```
 
@@ -1139,11 +1162,12 @@ const truncateRawBody = true; // Resumir ao invés de JSON completo
 Este workflow é fornecido como está sob Licença MIT.
 
 ### Créditos
-- **Criado por:** Pafcio
+- **Sistema de Análise de Alertas Wazuh com IA**
 - **Modelo de IA:** GPT-4 Turbo (OpenAI)
 - **Plataforma:** n8n.io
 - **Plataforma de Segurança:** Wazuh
-- **Tradução e Adaptação:** Português Brasileiro
+- **Integração:** Bitrix24
+- **Idioma:** Português Brasileiro
 
 ### Agradecimentos
 - Obrigado à comunidade n8n pela inspiração de workflows

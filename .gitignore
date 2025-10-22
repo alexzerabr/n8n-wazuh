@@ -1,0 +1,55 @@
+# Arquivos de configuração com credenciais reais
+*.credentials.json
+*-credentials.json
+config.local.json
+.env.local
+.env
+
+# Arquivos do n8n com credenciais
+*_v2.json
+Wazuh Automation_v2.json
+
+# Arquivos de backup que podem conter credenciais
+*.bak
+*.backup
+*.old
+
+# Arquivos temporários
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Logs que podem conter informações sensíveis
+*.log
+logs/
+
+# Node modules (se houver)
+node_modules/
+npm-debug.log*
+
+# Python (se houver scripts auxiliares)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Certificados e chaves
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Arquivos pessoais
+notas-pessoais.md
+TODO-privado.md
+
