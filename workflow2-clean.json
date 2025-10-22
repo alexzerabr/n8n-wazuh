@@ -1,0 +1,343 @@
+{
+  "name": "Análise e Relatórios Diários Wazuh com Memória de IA",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "5280d43d-ca80-4b32-85c9-89faa99802b3",
+      "name": "Agendar a cada 6 horas",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-976, -176]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "CoqaEALFhieggocg",
+          "mode": "list",
+          "cachedResultName": "wazuh_alerts"
+        },
+        "returnAll": true
+      },
+      "id": "bf11ed99-7925-41ca-96f9-ecaf0d8126ad",
+      "name": "Buscar Alertas Não Processados",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [-784, -176]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Agrupar alertas por agente E rule_id, filtrar não processados\nconst alerts = $input.all();\n\n// Filter unprocessed alerts (processed = \"0\" means not processed)\nconst unprocessedAlerts = alerts.filter(item => item.json.processed === \"0\" || item.json.processed === 0);\n\n// Group by agent + rule_id\nconst groupedByAgentAndRule = {};\n\nunprocessedAlerts.forEach(item => {\n  const agentName = item.json.agent_name;\n  const agentIp = item.json.agent_ip;\n  const ruleId = item.json.rule_id;\n  const key = `${agentName}_${agentIp}_${ruleId}`;\n  \n  if (!groupedByAgentAndRule[key]) {\n    groupedByAgentAndRule[key] = {\n      agent_name: agentName,\n      agent_ip: agentIp,\n      agent_id: item.json.agent_id,\n      rule_id: ruleId,\n      rule_description: item.json.rule_description,\n      rule_level: item.json.rule_level,\n      rule_groups: item.json.rule_groups,\n      alerts: [],\n      alert_count: 0\n    };\n  }\n  \n  // Create structured alert object\n  groupedByAgentAndRule[key].alerts.push({\n    id: item.json.id,\n    rule_id: item.json.rule_id,\n    rule_level: item.json.rule_level,\n    rule_description: item.json.rule_description,\n    rule_groups: item.json.rule_groups,\n    alert_data: item.json.alert_data,\n    timestamp: item.json.timestamp,\n    location: item.json.location,\n    raw_body: item.json.raw_body\n  });\n  groupedByAgentAndRule[key].alert_count++;\n});\n\n// Convert to array and sort by alert count (descending)\nconst result = Object.values(groupedByAgentAndRule).sort((a, b) => b.alert_count - a.alert_count);\n\nreturn result.map(item => ({ json: item }));"
+      },
+      "id": "fab61e74-c199-42bd-9ab1-31d8782f443b",
+      "name": "Agrupar Alertas por Agente e Regra",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-528, -176]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 🧠 Buscar memória do agente - últimos 5 alertas analisados para este agente\nconst groupedAlerts = $input.all();\nconst enrichedAlerts = [];\n\n// Obter todos os alertas do node Buscar Alertas Não Processados\nconst allAlertsNode = $('Buscar Alertas Não Processados');\nconst allAlerts = allAlertsNode.all();\n\n// Para cada alerta agrupado, encontrar sua memória\nfor (const groupedItem of groupedAlerts) {\n  const agentName = groupedItem.json.agent_name;\n  const agentIp = groupedItem.json.agent_ip;\n  \n  // Filtrar alertas processados deste agente com vereditos\n  const agentMemory = allAlerts\n    .filter(item => {\n      const alert = item.json;\n      return alert.agent_name === agentName &&\n             alert.agent_ip === agentIp &&\n             (alert.processed === \"1\" || alert.processed === 1) &&\n             alert.verdict != null &&\n             alert.verdict !== '';\n    })\n    .sort((a, b) => {\n      const timeA = new Date(a.json.analyzed_at || a.json.timestamp || 0).getTime();\n      const timeB = new Date(b.json.analyzed_at || b.json.timestamp || 0).getTime();\n      return timeB - timeA;\n    })\n    .slice(0, 5)\n    .map(item => ({\n      timestamp: item.json.analyzed_at || item.json.timestamp,\n      rule_id: item.json.rule_id,\n      rule_description: item.json.rule_description,\n      rule_level: item.json.rule_level,\n      alert_data: (item.json.alert_data || 'N/A').substring(0, 200),\n      verdict: item.json.verdict,\n      verdict_confidence: item.json.verdict_confidence,\n      ai_summary: item.json.ai_summary\n    }));\n  \n  enrichedAlerts.push({\n    json: {\n      ...groupedItem.json,\n      agent_memory: agentMemory,\n      has_memory: agentMemory.length > 0\n    }\n  });\n}\n\nreturn enrichedAlerts;"
+      },
+      "id": "c78b9280-8320-4cb8-a8e4-4851eb24a809",
+      "name": "🧠 Buscar Memória do Agente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-320, -176]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Preparar prompt aprimorado com contexto de memória\nconst agentName = $input.item.json.agent_name;\nconst agentIp = $input.item.json.agent_ip;\nconst agentId = $input.item.json.agent_id;\nconst ruleId = $input.item.json.rule_id;\nconst ruleDescription = $input.item.json.rule_description;\nconst ruleLevel = $input.item.json.rule_level;\nconst ruleGroups = $input.item.json.rule_groups;\nconst alerts = $input.item.json.alerts;\nconst alertCount = $input.item.json.alert_count;\nconst agentMemory = $input.item.json.agent_memory || [];\nconst hasMemory = $input.item.json.has_memory;\n\n// Formatar alertas atuais para análise de IA\nconst alertSummary = alerts.map((alert, idx) => {\n  return `Alerta ${idx + 1}:\n  - ID do Alerta: ${alert.id}\n  - Data/Hora: ${alert.timestamp}\n  - Localização: ${alert.location}\n  - Mensagem do Alerta: ${alert.alert_data}\n  \n  Detalhes do Evento:\n  ${alert.raw_body ? JSON.stringify(JSON.parse(alert.raw_body), null, 2) : 'N/D'}`;\n}).join('\\n\\n---\\n\\n');\n\n// 🧠 Formatar contexto de memória\nlet memoryContext = '';\nif (hasMemory && agentMemory.length > 0) {\n  memoryContext = `\n🧠 CONTEXTO HISTÓRICO - Últimos ${agentMemory.length} alertas analisados para este agente:\n\n${agentMemory.map((mem, idx) => `\nMemória ${idx + 1} (${new Date(mem.timestamp).toLocaleDateString('pt-BR')}):\n- ID da Regra: ${mem.rule_id} - ${mem.rule_description}\n- Nível da Regra: ${mem.rule_level}\n- Alerta: ${mem.alert_data?.substring(0, 200)}...\n- Veredito Anterior: **${mem.verdict}** (${mem.verdict_confidence} de confiança)\n- Análise: ${mem.ai_summary}`).join('\\n\\n---\\n')}\n\n💡 Use este contexto histórico para:\n1. Identificar padrões e comportamentos recorrentes\n2. Manter consistência com vereditos passados para alertas similares\n3. Detectar mudanças no comportamento normal\n4. Reconhecer falsos positivos previamente identificados\n`;\n} else {\n  memoryContext = '\\n⚠️ SEM CONTEXTO HISTÓRICO: Esta é a primeira análise para este agente. Baseie seu veredito apenas nos alertas atuais.\\n';\n}\n\nconst prompt = `Você é um analista avançado de cibersegurança com MEMÓRIA de análises passadas de alertas. Analise os seguintes alertas do agente \"${agentName}\" (ID: ${agentId}, IP: ${agentIp}).\n\n**INFORMAÇÕES DA REGRA:**\n- ID da Regra: ${ruleId}\n- Descrição da Regra: ${ruleDescription}\n- Nível da Regra: ${ruleLevel}\n- Grupos da Regra: ${ruleGroups}\n${memoryContext}\n**ALERTAS ATUAIS PARA ANALISAR:**\nTotal de Novos Alertas para esta Regra: ${alertCount}\n\n${alertSummary}\n\nSua tarefa (RESPONDA SEMPRE EM PORTUGUÊS DO BRASIL):\n1. Revisar o contexto histórico acima (se disponível) para entender padrões passados\n2. Analisar estas ${alertCount} novas instâncias da Regra ${ruleId}\n3. Comparar com vereditos passados - estes alertas são consistentes com o comportamento anterior?\n4. Identificar quaisquer NOVOS padrões ou anomalias comparados ao histórico\n5. Determinar se são Verdadeiros Positivos (ameaças genuínas) ou Falsos Positivos\n6. Considerar o nível da regra (${ruleLevel}) ao avaliar a severidade\n7. Fornecer um veredito claro com nível de confiança\n8. Dar recomendações específicas\n\nForneça sua resposta no seguinte formato JSON (EM PORTUGUÊS):\n{\n  \"agent_name\": \"${agentName}\",\n  \"agent_ip\": \"${agentIp}\",\n  \"rule_id\": \"${ruleId}\",\n  \"rule_description\": \"${ruleDescription}\",\n  \"total_alerts\": ${alertCount},\n  \"verdict\": \"Verdadeiro Positivo\" ou \"Falso Positivo\" ou \"Misto\",\n  \"confidence\": \"Alta\" ou \"Média\" ou \"Baixa\",\n  \"summary\": \"Resumo breve das descobertas para esta regra específica\",\n  \"detailed_analysis\": \"Análise detalhada comparando alertas atuais com padrões históricos\",\n  \"recommendations\": \"Recomendações específicas para este agente e regra\",\n  \"pattern_changes\": \"Quaisquer mudanças detectadas comparadas ao comportamento histórico (ou 'N/D' se sem histórico)\"\n}`;\n\nreturn {\n  agent_name: agentName,\n  agent_ip: agentIp,\n  agent_id: agentId,\n  rule_id: ruleId,\n  rule_description: ruleDescription,\n  alert_count: alertCount,\n  has_memory: hasMemory,\n  prompt: prompt,\n  raw_alerts: alerts\n};"
+      },
+      "id": "ca37c636-7e22-41cb-843d-54abcbada488",
+      "name": "Preparar Prompt Aprimorado com Memória",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-128, -176]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4-turbo-preview\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ],\n  \"temperature\": 0.3,\n  \"max_tokens\": 4000\n}",
+        "options": {}
+      },
+      "id": "08900333-68f6-4395-8b56-87208325d01a",
+      "name": "Análise de IA via OpenAI GPT",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [48, -176],
+      "credentials": {
+        "openAiApi": {
+          "id": "P3KoR7u3FAeYPnAF",
+          "name": "Conta OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Analisar resposta da IA com tratamento robusto de erros\nconst aiResponse = $input.item.json.message?.content || $input.item.json.content || $input.item.json.choices?.[0]?.message?.content;\nconst originalData = $node[\"Preparar Prompt Aprimorado com Memória\"].json;\n\nfunction extractField(text, fieldName) {\n  const patterns = [\n    new RegExp(`\"${fieldName}\"\\\\s*:\\\\s*\"([^\"]+)\"`, 'i'),\n    new RegExp(`\"${fieldName}\"\\\\s*:\\\\s*([0-9]+)`, 'i'),\n    new RegExp(`\"${fieldName}\"\\\\s*:\\\\s*([A-Za-z\\\\s]+)(?=,|\\\\n|\\\\})`,'i')\n  ];\n  \n  for (const pattern of patterns) {\n    const match = text.match(pattern);\n    if (match && match[1]) return match[1].trim();\n  }\n  return null;\n}\n\nfunction fixJSON(jsonStr) {\n  let fixed = jsonStr.trim()\n    .replace(/```json\\s*/g, '')\n    .replace(/```\\s*/g, '');\n  \n  const openBraces = (fixed.match(/\\{/g) || []).length;\n  const closeBraces = (fixed.match(/\\}/g) || []).length;\n  \n  if (openBraces > closeBraces) {\n    fixed += '\\n}'.repeat(openBraces - closeBraces);\n  }\n  \n  return fixed.replace(/,\\s*\\}/g, '}');\n}\n\nlet analysis;\n\ntry {\n  const jsonMatch = aiResponse.match(/```json\\s*([\\s\\S]*?)```/) || \n                    aiResponse.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    let jsonStr = fixJSON(jsonMatch[1] || jsonMatch[0]);\n    \n    try {\n      analysis = JSON.parse(jsonStr);\n    } catch (e) {\n      let bestParse = null;\n      for (let i = jsonStr.length; i > 50; i -= 10) {\n        try {\n          const testStr = fixJSON(jsonStr.substring(0, i));\n          bestParse = JSON.parse(testStr);\n          analysis = bestParse;\n          break;\n        } catch (e2) {}\n      }\n      if (!bestParse) throw new Error('Não foi possível analisar JSON');\n    }\n  } else {\n    throw new Error('Nenhum JSON encontrado');\n  }\n  \n  if (!analysis.verdict || analysis.verdict === 'Unable to determine') {\n    const extractedVerdict = extractField(aiResponse, 'verdict');\n    if (extractedVerdict && extractedVerdict !== 'Unable to determine') {\n      analysis.verdict = extractedVerdict;\n    }\n  }\n  \n  if (!analysis.confidence) {\n    analysis.confidence = extractField(aiResponse, 'confidence') || 'Média';\n  }\n  \n  if (!analysis.summary) {\n    analysis.summary = extractField(aiResponse, 'summary') || 'Análise concluída';\n  }\n  \n} catch (error) {\n  analysis = {\n    agent_name: originalData.agent_name,\n    agent_ip: originalData.agent_ip,\n    rule_id: originalData.rule_id,\n    verdict: extractField(aiResponse, 'verdict') || 'Unable to determine',\n    confidence: extractField(aiResponse, 'confidence') || 'Low',\n    summary: extractField(aiResponse, 'summary') || aiResponse.substring(0, 500)\n  };\n}\n\nanalysis.agent_name = analysis.agent_name || originalData.agent_name;\nanalysis.agent_ip = analysis.agent_ip || originalData.agent_ip;\nanalysis.rule_id = analysis.rule_id || originalData.rule_id;\nanalysis.verdict = analysis.verdict || 'Unable to determine';\n\nreturn {\n  ...analysis,\n  raw_ai_response: aiResponse,\n  analysis_timestamp: new Date().toISOString(),\n  raw_alerts: originalData.raw_alerts,\n  had_memory_context: originalData.has_memory\n};"
+      },
+      "id": "3a33706c-4ae1-40e3-baac-089dc8d4b004",
+      "name": "Analisar Resposta da IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [432, -176]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "1b4b3022-6f83-4770-9d8a-d7d6fdeb7258",
+      "name": "Agregar Todos os Resultados",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [592, -176]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gerar relatório HTML com indicadores de memória\nconst inputItems = $input.all();\nconst analyses = inputItems.flatMap(item => {\n  const d = item.json?.data;\n  return Array.isArray(d) ? d : [item.json];\n});\n\nconst reportDate = new Date().toLocaleDateString('pt-BR', { \n  weekday: 'long', \n  year: 'numeric', \n  month: 'long', \n  day: 'numeric' \n});\n\nconst uniqueAgents = new Set(analyses.map(a => `${a.agent_name}_${a.agent_ip}`)).size;\nconst uniqueRules = new Set(analyses.map(a => a.rule_id)).size;\nconst totalAlerts = analyses.reduce((sum, a) => sum + (a.total_alerts || 0), 0);\nconst truePositives = analyses.filter(a => a.verdict === 'Verdadeiro Positivo' || a.verdict === 'True Positive').length;\nconst falsePositives = analyses.filter(a => a.verdict === 'Falso Positivo' || a.verdict === 'False Positive').length;\nconst withMemory = analyses.filter(a => a.had_memory_context).length;\n\nconst tableRows = analyses.map(analysis => {\n  const verdictColor = \n    (analysis.verdict === 'Verdadeiro Positivo' || analysis.verdict === 'True Positive') ? '#dc3545' :\n    (analysis.verdict === 'Falso Positivo' || analysis.verdict === 'False Positive') ? '#28a745' : '#ffc107';\n  \n  const memoryBadge = analysis.had_memory_context \n    ? '<span style=\"background: #4CAF50; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7em;\">🧠 Memória</span>'\n    : '<span style=\"background: #9E9E9E; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7em;\">⚠️ Primeira Análise</span>';\n\n  return `\n    <tr>\n      <td style=\"padding: 12px; border: 1px solid #ddd;\">\n        <strong>${analysis.agent_name}</strong>${memoryBadge}<br>\n        <span style=\"font-size: 0.85em; color: #6c757d;\">${analysis.agent_ip}</span>\n      </td>\n      <td style=\"padding: 12px; border: 1px solid #ddd;\">\n        <strong>${analysis.rule_id}</strong><br>\n        <span style=\"font-size: 0.85em; color: #6c757d;\">${analysis.rule_description || 'N/D'}</span>\n      </td>\n      <td style=\"padding: 12px; border: 1px solid #ddd; text-align: center;\">\n        <span style=\"padding: 4px 10px; background: #f8f9fa; border-radius: 12px; font-weight: bold;\">${analysis.total_alerts}</span>\n      </td>\n      <td style=\"padding: 12px; border: 1px solid #ddd;\">${analysis.summary}</td>\n      <td style=\"padding: 12px; border: 1px solid #ddd; text-align: center;\">\n        <span style=\"color: ${verdictColor}; font-weight: bold;\">${analysis.verdict}</span><br>\n        <span style=\"font-size: 0.85em; color: #6c757d;\">${analysis.confidence} de confiança</span>\n      </td>\n      <td style=\"padding: 12px; border: 1px solid #ddd; font-size: 0.9em;\">${analysis.recommendations}</td>\n    </tr>\n  `;\n}).join('');\n\nconst htmlReport = `\n<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n  <meta charset=\"UTF-8\">\n  <title>Relatório de Segurança Wazuh - ${reportDate}</title>\n  <style>\n    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 1600px; margin: 0 auto; padding: 20px; background: #f5f5f5; }\n    .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n    .header { border-bottom: 3px solid #007bff; padding-bottom: 20px; margin-bottom: 30px; }\n    h1 { color: #007bff; margin: 0; }\n    .summary-grid { display: flex; gap: 15px; margin: 30px 0; flex-wrap: wrap; }\n    .card { flex: 1; min-width: 150px; background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #007bff; }\n    .card h3 { margin: 0 0 5px 0; font-size: 0.85em; color: #6c757d; text-transform: uppercase; }\n    .card .value { font-size: 2em; font-weight: bold; color: #333; }\n    table { width: 100%; border-collapse: collapse; margin-top: 20px; }\n    th { background: #007bff; color: white; padding: 12px; text-align: left; }\n    tr:nth-child(even) { background: #f8f9fa; }\n    tr:hover { background: #e9ecef; }\n    .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #6c757d; font-size: 0.9em; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>🛡️ Relatório de Segurança Wazuh com Memória de IA</h1>\n      <div class=\"subtitle\">${reportDate}</div>\n    </div>\n    <div class=\"summary-grid\">\n      <div class=\"card\"><h3>Agentes Únicos</h3><div class=\"value\">${uniqueAgents}</div></div>\n      <div class=\"card\"><h3>Regras Únicas</h3><div class=\"value\">${uniqueRules}</div></div>\n      <div class=\"card\"><h3>Total de Alertas</h3><div class=\"value\">${totalAlerts}</div></div>\n      <div class=\"card\" style=\"border-left-color: #4CAF50;\"><h3>🧠 Com Memória</h3><div class=\"value\" style=\"color: #4CAF50;\">${withMemory}</div></div>\n      <div class=\"card\" style=\"border-left-color: #dc3545;\"><h3>Verdadeiros Positivos</h3><div class=\"value\" style=\"color: #dc3545;\">${truePositives}</div></div>\n      <div class=\"card\" style=\"border-left-color: #28a745;\"><h3>Falsos Positivos</h3><div class=\"value\" style=\"color: #28a745;\">${falsePositives}</div></div>\n    </div>\n    <h2>🧠 Análise de IA</h2>\n    <table>\n      <thead><tr><th>Agente</th><th>Regra</th><th>Quantidade</th><th>Resumo</th><th>Veredito</th><th>Recomendações</th></tr></thead>\n      <tbody>${tableRows}</tbody>\n    </table>\n    <div class=\"footer\">\n      <p><strong>🧠 Agente de IA</strong> - Aprendendo com vereditos passados</p>\n      <p>Gerado por n8n + OpenAI GPT</p>\n      <p>${new Date().toISOString()}</p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn {\n  html_report: htmlReport,\n  report_date: reportDate,\n  summary: { unique_agents: uniqueAgents, unique_rules: uniqueRules, total_alerts: totalAlerts },\n  analyses: analyses\n};"
+      },
+      "id": "d950b874-33d9-4c54-9e57-47453ddf4b69",
+      "name": "Gerar Relatório HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [768, -176]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Gerar alerta individual em formato BBCode para Bitrix24\nconst inputItems = $input.all();\nconst analyses = inputItems.flatMap(item => {\n  const d = item.json?.data;\n  return Array.isArray(d) ? d : [item.json];\n});\n\n// Processar cada análise individualmente\nconst results = analyses.map(analysis => {\n  // Buscar rule_level dos raw_alerts (onde está o nível real)\n  const level = analysis.raw_alerts && analysis.raw_alerts[0] && analysis.raw_alerts[0].rule_level \n    ? analysis.raw_alerts[0].rule_level \n    : 0;\n  \n  // Determinar severidade baseada no rule_level\n  let severidade = '';\n  if (level >= 12) {\n    severidade = '⛔ Crítica';\n  } else if (level >= 7) {\n    severidade = '🔴 Alta';\n  } else if (level >= 3) {\n    severidade = '🟡 Média';\n  } else {\n    severidade = '🟢 Baixa';\n  }\n\n  // Badge de memória\n  const memoriaBadge = analysis.had_memory_context \n    ? '[COLOR=#4CAF50]🧠 Análise com Contexto Histórico[/COLOR]'\n    : '[COLOR=#9E9E9E]⚠️ Primeira Análise[/COLOR]';\n\n  // Formatar data\n  const dataIncidente = analysis.raw_alerts && analysis.raw_alerts[0] \n    ? new Date(analysis.raw_alerts[0].timestamp).toLocaleString('pt-BR')\n    : new Date().toLocaleString('pt-BR');\n\n  // Nome do alerta\n  const nomeAlerta = analysis.rule_description || 'N/D';\n\n  // Montar mensagem BBCode\n  let message = `🚨 [B]Alerta de Segurança Wazuh[/B]\\n\\n`;\n  message += `[B]Nome do Alerta:[/B] ${nomeAlerta}\\n`;\n  message += `[B]Origem:[/B] ${analysis.agent_ip || 'N/D'} (${analysis.agent_name || 'N/D'})\\n`;\n  message += `[B]Severidade:[/B] ${severidade} (Nível ${level})\\n`;\n  message += `[B]Data do Incidente:[/B] ${dataIncidente}\\n`;\n  message += `[B]Quantidade de Alertas:[/B] ${analysis.total_alerts || 1}\\n`;\n  message += `${memoriaBadge}\\n\\n`;\n\n  message += `🔍 [B]Resumo da Análise[/B]\\n`;\n  message += `${analysis.summary || analysis.ai_summary || 'Análise em processamento'}\\n\\n`;\n\n  message += `⚖️ [B]Veredito[/B]\\n`;\n  message += `${analysis.verdict || 'Não determinado'} - Confiança: ${analysis.confidence || 'N/D'}\\n\\n`;\n\n  message += `⚙️ [B]Ações Recomendadas[/B]\\n`;\n  const recomendacoes = analysis.recommendations || 'Nenhuma recomendação específica disponível';\n  message += `${recomendacoes}`;\n\n  // Adicionar análise detalhada se disponível\n  if (analysis.detailed_analysis) {\n    message += `\\n\\n📋 [B]Análise Detalhada[/B]\\n`;\n    message += `${analysis.detailed_analysis}`;\n  }\n\n  // Adicionar mudanças de padrão se disponível\n  if (analysis.pattern_changes && analysis.pattern_changes !== 'N/D') {\n    message += `\\n\\n🔄 [B]Mudanças de Padrão[/B]\\n`;\n    message += `${analysis.pattern_changes}`;\n  }\n\n  // Limitar tamanho da mensagem (Bitrix tem limite de ~4096 caracteres)\n  if (message.length > 4000) {\n    message = message.substring(0, 3980) + '...\\n\\n[Mensagem truncada devido ao tamanho]';\n  }\n\n  return {\n    bitrix_message: message,\n    agent_name: analysis.agent_name,\n    rule_id: analysis.rule_id,\n    verdict: analysis.verdict,\n    severity: severidade,\n    rule_level: level\n  };\n});\n\nreturn results;"
+      },
+      "id": "f8a1b2c3-d4e5-f6a7-b8c9-d0e1f2a3b4c5",
+      "name": "Gerar Alertas Bitrix",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [768, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hubsoft.bitrix24.com.br/rest/97/gd8csgsa5mc0a9qp/im.message.add.json",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "DIALOG_ID",
+              "value": "chat14427"
+            },
+            {
+              "name": "MESSAGE",
+              "value": "={{ $json.bitrix_message }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a9b8c7d6-e5f4-a3b2-c1d0-e9f8a7b6c5d4",
+      "name": "Enviar para Bitrix24",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [944, 100]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@your-company.com",
+        "toEmail": "security-team@your-company.com",
+        "subject": "=Relatório de Segurança Wazuh - {{ $json.report_date }}",
+        "emailType": "html",
+        "text": "={{ $json.html_report }}",
+        "options": {}
+      },
+      "id": "b1c59285-88a5-428e-a2c5-7c94190a97e1",
+      "name": "Enviar Relatório por Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [944, -176],
+      "credentials": {
+        "smtp": {
+          "id": "4wuqvlEe5wHK9R9P",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrair IDs de alertas e vereditos para armazenamento\nconst analyses = $input.item.json.analyses || [];\nconst alertsToUpdate = [];\n\nanalyses.forEach(analysis => {\n  const rawAlerts = analysis.raw_alerts || [];\n  rawAlerts.forEach(alert => {\n    if (alert.id) {\n      alertsToUpdate.push({\n        id: alert.id,\n        verdict: analysis.verdict,\n        verdict_confidence: analysis.confidence,\n        ai_summary: analysis.summary,\n        analyzed_at: analysis.analysis_timestamp,\n        processed: \"1\"\n      });\n    }\n  });\n});\n\nreturn alertsToUpdate.map(item => ({ json: item }));"
+      },
+      "id": "9540763c-42c8-49ea-976f-de31509751d2",
+      "name": "🧠 Preparar Atualizações de Vereditos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1088, -176]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "CoqaEALFhieggocg",
+          "mode": "list",
+          "cachedResultName": "wazuh_alerts"
+        },
+        "filters": {
+          "conditions": [{ "keyValue": "={{ $json.id }}" }]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "verdict": "={{ $json.verdict }}",
+            "verdict_confidence": "={{ $json.verdict_confidence }}",
+            "ai_summary": "={{ $json.ai_summary }}",
+            "analyzed_at": "={{ $json.analyzed_at }}",
+            "processed": "={{ $json.processed }}"
+          }
+        }
+      },
+      "id": "4cd3e956-3921-4d29-ac17-d7f69a172fd4",
+      "name": "🧠 Armazenar Vereditos na Tabela de Dados",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [1312, -176]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calcular parâmetros de limpeza\nconst retentionDays = 3;\nconst minAlertsPerHost = 5;\n\nconst cutoffDate = new Date();\ncutoffDate.setDate(cutoffDate.getDate() - retentionDays);\n\nreturn {\n  cutoff_date: cutoffDate.toISOString(),\n  retention_days: retentionDays,\n  min_alerts_per_host: minAlertsPerHost,\n  cleanup_timestamp: new Date().toISOString()\n};"
+      },
+      "id": "29931556-34a5-42bd-9361-d8e3b458bd9d",
+      "name": "Calcular Parâmetros de Limpeza",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1488, -176]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "CoqaEALFhieggocg",
+          "mode": "list",
+          "cachedResultName": "wazuh_alerts"
+        },
+        "returnAll": true
+      },
+      "id": "aa8798d8-d383-45da-a754-348329c6a56e",
+      "name": "Buscar Todos Alertas para Limpeza",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [1664, -176]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Exclusão Inteligente: Manter os Últimos N por Host\nconst cutoffDate = new Date($node['Calcular Parâmetros de Limpeza'].json.cutoff_date);\nconst minAlertsPerHost = $node['Calcular Parâmetros de Limpeza'].json.min_alerts_per_host;\nconst allAlerts = $input.all();\n\nif (allAlerts.length === 0) return [];\n\nconst alertsByHost = {};\nallAlerts.forEach(item => {\n  const alert = item.json;\n  const hostKey = `${alert.agent_name}_${alert.agent_ip}`;\n  if (!alertsByHost[hostKey]) alertsByHost[hostKey] = [];\n  alertsByHost[hostKey].push({...alert, alertDate: new Date(alert.analyzed_at || alert.timestamp || alert.created_at)});\n});\n\nconst mustKeepAlertIds = new Set();\nObject.keys(alertsByHost).forEach(hostKey => {\n  const processedWithVerdicts = alertsByHost[hostKey]\n    .filter(alert => (alert.processed === \"1\" || alert.processed === 1) && alert.verdict)\n    .sort((a, b) => b.alertDate.getTime() - a.alertDate.getTime())\n    .slice(0, minAlertsPerHost);\n  processedWithVerdicts.forEach(alert => mustKeepAlertIds.add(alert.id));\n});\n\nconst alertsToDelete = [];\nallAlerts.forEach(item => {\n  const alert = item.json;\n  const alertDate = new Date(alert.analyzed_at || alert.timestamp || alert.created_at);\n  const shouldDelete = (alert.processed === \"1\" || alert.processed === 1) && \n                       alertDate < cutoffDate && \n                       !mustKeepAlertIds.has(alert.id);\n  if (shouldDelete) {\n    alertsToDelete.push({ json: { id: alert.id } });\n  }\n});\n\nreturn alertsToDelete;"
+      },
+      "id": "37d3beb9-aeb3-4bb9-92b6-c3e1e531abae",
+      "name": "🧹 Lógica de Exclusão Inteligente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1840, -176],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "value": "CoqaEALFhieggocg",
+          "mode": "list",
+          "cachedResultName": "wazuh_alerts"
+        },
+        "filters": {
+          "conditions": [{ "keyValue": "={{ $json.id }}" }]
+        }
+      },
+      "id": "09a74d71-cfba-43d7-a3e9-47824b78f24f",
+      "name": "🧹 Excluir Alertas Antigos",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [2016, -176]
+    },
+    {
+      "parameters": {
+        "jsCode": "const deletedCount = $input.all().length;\nconst params = $node['Calcular Parâmetros de Limpeza'].json;\n\nconsole.log('Limpeza Completa - Excluídos:', deletedCount);\n\nreturn { \n  json: { \n    cleanup_completed: true, \n    alerts_deleted: deletedCount,\n    retention_days: params.retention_days,\n    completed_at: new Date().toISOString()\n  } \n};"
+      },
+      "id": "4039012a-53e4-46fa-a8ca-29becc27473f",
+      "name": "Registrar Resumo da Limpeza",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2192, -176]
+    },
+    {
+      "parameters": {
+        "content": "## FLUXO DE ANÁLISE DIÁRIA WAZUH\n\nExecuta a cada 6 horas para:\n1. Buscar alertas não processados\n2. Agrupar por agente + regra\n3. Carregar memória histórica\n4. Analisar com IA\n5. Armazenar vereditos\n6. Enviar relatório por email\n7. Limpar dados antigos",
+        "height": 288,
+        "width": 976,
+        "color": 4
+      },
+      "id": "61ae8543-47c3-463d-b2c6-1cbedeaa2c95",
+      "name": "Nota Adesiva - Visão Geral",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-1024, -864]
+    }
+  ],
+  "connections": {
+    "Agendar a cada 6 horas": { "main": [[{ "node": "Buscar Alertas Não Processados", "type": "main", "index": 0 }]] },
+    "Buscar Alertas Não Processados": { "main": [[{ "node": "Agrupar Alertas por Agente e Regra", "type": "main", "index": 0 }]] },
+    "Agrupar Alertas por Agente e Regra": { "main": [[{ "node": "🧠 Buscar Memória do Agente", "type": "main", "index": 0 }]] },
+    "🧠 Buscar Memória do Agente": { "main": [[{ "node": "Preparar Prompt Aprimorado com Memória", "type": "main", "index": 0 }]] },
+    "Preparar Prompt Aprimorado com Memória": { "main": [[{ "node": "Análise de IA via OpenAI GPT", "type": "main", "index": 0 }]] },
+    "Análise de IA via OpenAI GPT": { "main": [[{ "node": "Analisar Resposta da IA", "type": "main", "index": 0 }]] },
+    "Analisar Resposta da IA": { "main": [[{ "node": "Agregar Todos os Resultados", "type": "main", "index": 0 }]] },
+    "Agregar Todos os Resultados": { "main": [[{ "node": "Gerar Relatório HTML", "type": "main", "index": 0 }, { "node": "Gerar Alertas Bitrix", "type": "main", "index": 0 }]] },
+    "Gerar Relatório HTML": { "main": [[{ "node": "Enviar Relatório por Email", "type": "main", "index": 0 }, { "node": "🧠 Preparar Atualizações de Vereditos", "type": "main", "index": 0 }]] },
+    "Gerar Alertas Bitrix": { "main": [[{ "node": "Enviar para Bitrix24", "type": "main", "index": 0 }]] },
+    "🧠 Preparar Atualizações de Vereditos": { "main": [[{ "node": "🧠 Armazenar Vereditos na Tabela de Dados", "type": "main", "index": 0 }]] },
+    "🧠 Armazenar Vereditos na Tabela de Dados": { "main": [[{ "node": "Calcular Parâmetros de Limpeza", "type": "main", "index": 0 }]] },
+    "Calcular Parâmetros de Limpeza": { "main": [[{ "node": "Buscar Todos Alertas para Limpeza", "type": "main", "index": 0 }]] },
+    "Buscar Todos Alertas para Limpeza": { "main": [[{ "node": "🧹 Lógica de Exclusão Inteligente", "type": "main", "index": 0 }]] },
+    "🧹 Lógica de Exclusão Inteligente": { "main": [[{ "node": "🧹 Excluir Alertas Antigos", "type": "main", "index": 0 }]] },
+    "🧹 Excluir Alertas Antigos": { "main": [[{ "node": "Registrar Resumo da Limpeza", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "",
+  "meta": { "instanceId": "00000000000000000000000000000000000000000000000000000000000000000000" },
+  "id": "",
+  "tags": [
+    { "id": "tag-wazuh", "name": "wazuh", "createdAt": "2025-10-11T18:03:20.491Z", "updatedAt": "2025-10-11T18:03:20.491Z" },
+    { "id": "tag-ai-agent", "name": "ai-agent", "createdAt": "2025-10-13T16:45:52.069Z", "updatedAt": "2025-10-13T16:45:52.069Z" },
+    { "id": "tag-memory", "name": "memory", "createdAt": "2025-10-13T16:45:52.073Z", "updatedAt": "2025-10-13T16:45:52.073Z" },
+    { "id": "tag-security", "name": "security", "createdAt": "2025-10-11T18:03:20.670Z", "updatedAt": "2025-10-11T18:03:20.670Z" }
+  ]
+}

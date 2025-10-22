@@ -1,0 +1,173 @@
+{
+  "name": "Coleta de Alertas Wazuh",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Receber alerta do WAZUH",
+        "height": 224,
+        "width": 288
+      },
+      "id": "50e00d40-6da2-45f3-9ba7-8f3df023b1ca",
+      "name": "Nota Adesiva - Informações",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        -32
+      ],
+      "notes": "FLUXO DE COLETA DE ALERTAS WAZUH\n\nEste fluxo recebe alertas do Wazuh via webhook e os armazena na Tabela de Dados do n8n.\n\nURL do Webhook: https://sua-instancia-n8n.com/webhook/wazuh-alert\n\nConfiguração no Wazuh:\n1. Adicionar integração de webhook\n2. Definir URL para o endpoint do webhook acima\n3. Definir método como POST\n4. Testar com um alerta de exemplo"
+    },
+    {
+      "parameters": {
+        "content": "## Inserir dados na Tabela de Dados",
+        "height": 224,
+        "width": 592,
+        "color": 5
+      },
+      "id": "a63b4e91-7d1c-49e3-a0b5-fde5858f69ff",
+      "name": "Nota Adesiva - Banco de Dados",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        -32
+      ],
+      "notes": "ARMAZENAMENTO NO BANCO DE DADOS\n\nArmazena alertas na Tabela de Dados do n8n:\n- agent_name (nome do agente)\n- agent_ip (IP do agente)\n- alert_data (dados em JSON)\n- timestamp (data/hora)\n- processed (falso por padrão)\n\nCertifique-se de criar sua Tabela de Dados chamada 'wazuh_alerts' primeiro!"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "CoqaEALFhieggocg",
+          "mode": "list",
+          "cachedResultName": "wazuh_alerts"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "12df79c6-d5dd-491e-9e08-482015060285",
+      "name": "Inserir na Tabela de Dados",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        32,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Registra sucesso e retorna resumo\nconst items = $input.all();\n\nconst summary = {\n  success: true,\n  alerts_stored: items.length,\n  timestamp: new Date().toISOString(),\n  table: 'wazuh_alerts',\n  agents: [...new Set(items.map(i => i.json.agent_name))],\n  severity_levels: items.map(i => i.json.rule_level)\n};\n\nconsole.log('=== RESUMO DE ARMAZENAMENTO DE ALERTAS ===');\nconsole.log(`Armazenados ${summary.alerts_stored} alerta(s)`);\nconsole.log(`Agentes: ${summary.agents.join(', ')}`);\nconsole.log(`Níveis de severidade: ${summary.severity_levels.join(', ')}`);\n\nreturn { json: summary };"
+      },
+      "id": "0350160f-ef24-4db5-9102-b019eb40a61c",
+      "name": "Registrar Resumo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wazuh-alert",
+        "options": {}
+      },
+      "id": "2bf8ca80-7a8a-408e-96b3-0d9d162d2073",
+      "name": "Wazuh Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        32
+      ],
+      "webhookId": "wazuh-alert-receiver"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrair e estruturar dados de alerta do webhook Wazuh (campos body.*)\nconst items = $input.all();\nconst processedAlerts = [];\n\nfor (const item of items) {\n  // Webhook n8n passa payload em item.json.body.{...}\n  const root = item.json || {};\n  const body = root.body || {};\n\n  // Agente de body.agent.*\n  const agentName = body.agent?.name ?? 'agente-desconhecido';\n  const agentIp = body.agent?.ip ?? '0.0.0.0';\n  const agentId = body.agent?.id ?? 'desconhecido';\n\n  // Regra de body.rule.*\n  const ruleIdRaw = body.rule?.id ?? 'desconhecido';\n  const ruleLevelRaw = body.rule?.level ?? 0;\n  const ruleDescription = body.rule?.description ?? 'Sem descrição';\n  const ruleGroups = Array.isArray(body.rule?.groups) ? body.rule.groups : [];\n\n  const rule_id = typeof ruleIdRaw === 'string' ? ruleIdRaw : String(ruleIdRaw);\n  const rule_level = Number.parseInt(ruleLevelRaw, 10) || 0;\n\n  // Timestamp e localização de body.*\n  const timestamp = body.timestamp ?? new Date().toISOString();\n  const location = body.location ?? '';\n\n  // alert_data do campo \"message\" (ex.: mensagem de log de evento do Windows)\n  // No exemplo fornecido: body.data.win.system.message\n  const message =\n    body.message ??\n    body.data?.win?.system?.message ??\n    body.full_log ??\n    '';\n\n  // Alerta completo também mantido (opcionalmente útil para depuração)\n  const alertData = body;\n\n  // ID único\n  const uniqueId = `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n\n  const structuredAlert = {\n    id: uniqueId,\n\n    // Agente\n    agent_name: agentName,\n    agent_ip: agentIp,\n    agent_id: agentId,\n\n    // alert_data agora vem do campo message\n    alert_data: typeof message === 'string' ? message : JSON.stringify(message),\n\n    // Regra\n    rule_id,\n    rule_level,\n    rule_description: ruleDescription,\n    rule_groups: ruleGroups.join(','),\n\n    // Campos adicionais\n    full_log: '',\n    location,\n\n    // Tempo\n    timestamp,\n    created_at: new Date().toISOString(),\n\n    // Status/origem\n    processed: false,\n    source: 'wazuh',\n    collection_version: 'v1.0',\n\n    // Payload bruto (útil para inspeção)\n    raw_body: JSON.stringify(alertData),\n  };\n\n  processedAlerts.push(structuredAlert);\n}\n\nreturn processedAlerts;\n"
+      },
+      "id": "7fccec14-08b9-401f-98af-7644a0ff9d6e",
+      "name": "Processar Dados do Alerta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        32
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Inserir na Tabela de Dados": {
+      "main": [
+        [
+          {
+            "node": "Registrar Resumo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wazuh Webhook": {
+      "main": [
+        [
+          {
+            "node": "Processar Dados do Alerta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Dados do Alerta": {
+      "main": [
+        [
+          {
+            "node": "Inserir na Tabela de Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "00000000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "id": "",
+  "tags": [
+    {
+      "createdAt": "2025-10-11T18:03:20.491Z",
+      "updatedAt": "2025-10-11T18:03:20.491Z",
+      "id": "tag-wazuh",
+      "name": "wazuh"
+    },
+    {
+      "createdAt": "2025-10-11T18:03:20.826Z",
+      "updatedAt": "2025-10-11T18:03:20.826Z",
+      "id": "tag-datatable",
+      "name": "data-table"
+    },
+    {
+      "createdAt": "2025-10-11T18:03:20.670Z",
+      "updatedAt": "2025-10-11T18:03:20.670Z",
+      "id": "tag-security",
+      "name": "security"
+    }
+  ]
+}
