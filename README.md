@@ -119,10 +119,10 @@ Agregar Resultados
   │    ┌─────────────────────────────────┐
   │    │ Preparar Dados da Tarefa        │
   │    │ - Título: [WAZUH] Agent Name    │
-  │    │ - Responsável: ID 885           │
-  │    │ - Participantes: IDs 95, 97     │
-  │    │ - Observador: ID 51             │
-  │    │ - Grupo: ID 35                  │
+  │    │ - Responsável: ID 123           │
+  │    │ - Participantes: IDs 123, 123     │
+  │    │ - Observador: ID 123             │
+  │    │ - Grupo: ID 123                  │
   │    │ - Tags: Wazuh, Critico          │
   │    └─────────────┬───────────────────┘
   │                  ↓
@@ -264,11 +264,11 @@ Agregar Resultados
 > - `YOUR_SMTP_CREDENTIAL_ID` → ID da credencial SMTP
 > - `YOUR_DOMAIN.bitrix24.com.br` → Seu domínio Bitrix24
 > - `YOUR_USER_ID` → Seu ID de usuário Bitrix24
-> - `YOUR_GROUP_ID` → ID do grupo/projeto no Bitrix24 (ex: 35)
-> - `YOUR_RESPONSIBLE_ID` → ID do usuário responsável (ex: 885)
-> - `YOUR_ACCOMPLICE_ID_1` → ID do primeiro participante (ex: 95)
-> - `YOUR_ACCOMPLICE_ID_2` → ID do segundo participante (ex: 97)
-> - `YOUR_AUDITOR_ID` → ID do observador (ex: 51)
+> - `YOUR_GROUP_ID` → ID do grupo/projeto no Bitrix24
+> - `YOUR_RESPONSIBLE_ID` → ID do usuário responsável
+> - `YOUR_ACCOMPLICE_ID_1` → ID do primeiro participante
+> - `YOUR_ACCOMPLICE_ID_2` → ID do segundo participante
+> - `YOUR_AUDITOR_ID` → ID do observador
 > - `chatYOUR_CHAT_ID` → ID do chat Bitrix24
 > - `your-email@example.com` → Seu endereço de email
 
@@ -1075,10 +1075,10 @@ Deve retornar dados do usuário atual se o webhook estiver correto.
 {
   "TITLE": "[WAZUH] Alerta Crítico de Segurança - agent_name",
   "DESCRIPTION": "Análise completa do alerta em BBCode",
-  "GROUP_ID": "35",
-  "RESPONSIBLE_ID": "885",
-  "ACCOMPLICES": ["95", "97"],
-  "AUDITORS": ["51"],
+  "GROUP_ID": "123",
+  "RESPONSIBLE_ID": "123",
+  "ACCOMPLICES": ["123", "123"],
+  "AUDITORS": ["123"],
   "TAGS": ["Wazuh", "Critico"]
 }
 ```
