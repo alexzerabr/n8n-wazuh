@@ -7,13 +7,13 @@
         "height": 224,
         "width": 288
       },
-      "id": "82ffb733-faae-4117-a6db-a8b230b7dad5",
+      "id": "b4cc9994-f177-4061-955e-62894112dd29",
       "name": "Nota Adesiva - Informações",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        16,
-        -448
+        -3408,
+        112
       ],
       "notes": "FLUXO DE COLETA DE ALERTAS WAZUH\n\nEste fluxo recebe alertas do Wazuh via webhook e os armazena na Tabela de Dados do n8n.\n\nURL do Webhook: https://sua-instancia-n8n.com/webhook/wazuh-alert\n\nConfiguração no Wazuh:\n1. Adicionar integração de webhook\n2. Definir URL para o endpoint do webhook acima\n3. Definir método como POST\n4. Testar com um alerta de exemplo"
     },
@@ -24,13 +24,13 @@
         "width": 592,
         "color": 5
       },
-      "id": "aa31dec7-a946-4290-a501-1ab4d22cb098",
+      "id": "081f6520-13a5-46d4-a294-130a2ec9a02a",
       "name": "Nota Adesiva - Banco de Dados",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        304,
-        -448
+        -3120,
+        112
       ],
       "notes": "ARMAZENAMENTO NO BANCO DE DADOS\n\nArmazena alertas na Tabela de Dados do n8n:\n- agent_name (nome do agente)\n- agent_ip (IP do agente)\n- alert_data (dados em JSON)\n- timestamp (data/hora)\n- processed (falso por padrão)\n\nCertifique-se de criar sua Tabela de Dados chamada 'wazuh_alerts' primeiro!"
     },
@@ -244,7 +244,7 @@
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "dateTime",
+              "type": "string",
               "readOnly": false,
               "removed": false
             }
@@ -254,62 +254,55 @@
         },
         "options": {}
       },
-      "id": "c5a13e1d-f9ae-4c57-842b-b6fedd4e22af",
+      "id": "37916b87-1c58-4e12-ae2a-2061403e351a",
       "name": "Inserir na Tabela de Dados",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1,
       "position": [
-        560,
-        -384
+        -2864,
+        176
       ]
     },
     {
       "parameters": {
         "jsCode": "// Registra sucesso e retorna resumo\nconst items = $input.all();\n\nconst summary = {\n  success: true,\n  alerts_stored: items.length,\n  timestamp: new Date().toISOString(),\n  table: 'wazuh_alerts',\n  agents: [...new Set(items.map(i => i.json.agent_name))],\n  severity_levels: items.map(i => i.json.rule_level)\n};\n\nconsole.log('=== RESUMO DE ARMAZENAMENTO DE ALERTAS ===');\nconsole.log(`Armazenados ${summary.alerts_stored} alerta(s)`);\nconsole.log(`Agentes: ${summary.agents.join(', ')}`);\nconsole.log(`Níveis de severidade: ${summary.severity_levels.join(', ')}`);\n\nreturn { json: summary };"
       },
-      "id": "68628e40-ac8e-4e1d-86bb-66fb64050f8d",
+      "id": "4f65d85b-83d1-4e88-a7e8-14ca9b268620",
       "name": "Registrar Resumo",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        784,
-        -384
+        -2640,
+        176
       ]
     },
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "wazuh/ingest-YOUR_WEBHOOK_TOKEN",
-        "authentication": "headerAuth",
+        "path": "wazuh/ingest-d2F6dWhfaW50ZWdyYXRpb246V3pAaHViIzIwMjU=",
         "options": {}
       },
-      "id": "ad2636fb-56c8-41d8-83a8-5563ae0c844f",
+      "id": "d5c6fa9c-8808-40cb-8d04-55f91d518568",
       "name": "Wazuh Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        112,
-        -384
+        -3312,
+        176
       ],
-      "webhookId": "wazuh-alert-receiver",
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "YOUR_HEADER_AUTH_ID",
-          "name": "Header Wazuh"
-        }
-      }
+      "webhookId": "wazuh-alert-receiver"
     },
     {
       "parameters": {
         "jsCode": "// Extrair e estruturar dados de alerta do webhook Wazuh (campos body.*)\nconst items = $input.all();\nconst processedAlerts = [];\n\nfor (const item of items) {\n  // Webhook n8n passa payload em item.json.body.{...}\n  const root = item.json || {};\n  const body = root.body || {};\n\n  // Agente de body.agent.*\n  const agentName = body.agent?.name ?? 'agente-desconhecido';\n  const agentIp = body.agent?.ip ?? '0.0.0.0';\n  const agentId = body.agent?.id ?? 'desconhecido';\n\n  // Regra de body.rule.*\n  const ruleIdRaw = body.rule?.id ?? 'desconhecido';\n  const ruleLevelRaw = body.rule?.level ?? 0;\n  const ruleDescription = body.rule?.description ?? 'Sem descrição';\n  const ruleGroups = Array.isArray(body.rule?.groups) ? body.rule.groups : [];\n\n  const rule_id = typeof ruleIdRaw === 'string' ? ruleIdRaw : String(ruleIdRaw);\n  const rule_level = Number.parseInt(ruleLevelRaw, 10) || 0;\n\n  // Timestamp e localização de body.*\n  const timestamp = body.timestamp ?? new Date().toISOString();\n  const location = body.location ?? '';\n\n  // alert_data do campo \"message\" (ex.: mensagem de log de evento do Windows)\n  // No exemplo fornecido: body.data.win.system.message\n  const message =\n    body.message ??\n    body.data?.win?.system?.message ??\n    body.full_log ??\n    '';\n\n  // Alerta completo também mantido (opcionalmente útil para depuração)\n  const alertData = body;\n\n  // ID único\n  const uniqueId = `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n\n  const structuredAlert = {\n    id: uniqueId,\n\n    // Agente\n    agent_name: agentName,\n    agent_ip: agentIp,\n    agent_id: agentId,\n\n    // alert_data agora vem do campo message\n    alert_data: typeof message === 'string' ? message : JSON.stringify(message),\n\n    // Regra\n    rule_id,\n    rule_level,\n    rule_description: ruleDescription,\n    rule_groups: ruleGroups.join(','),\n\n    // Campos adicionais\n    full_log: '',\n    location,\n\n    // Tempo\n    timestamp,\n    created_at: new Date().toISOString(),\n\n    // Status/origem\n    processed: false,\n    source: 'wazuh',\n    collection_version: 'v1.0',\n\n    // Payload bruto (útil para inspeção)\n    raw_body: JSON.stringify(alertData),\n  };\n\n  processedAlerts.push(structuredAlert);\n}\n\nreturn processedAlerts;\n"
       },
-      "id": "f1e345db-e7d6-4d4f-a4c0-409d944bcedb",
+      "id": "2db741f7-67df-4c3b-b499-47827c11feac",
       "name": "Processar Dados do Alerta",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        336,
-        -384
+        -3088,
+        176
       ]
     },
     {
@@ -323,13 +316,13 @@
           ]
         }
       },
-      "id": "d0dc838d-ea46-4c4b-9e64-1e81f7ca7351",
+      "id": "2a43aad5-8321-40a8-b05e-9467e0db9c89",
       "name": "Agendar a cada 6 horas",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        0,
-        304
+        -3312,
+        688
       ]
     },
     {
@@ -344,39 +337,39 @@
         },
         "returnAll": true
       },
-      "id": "8e42e100-6f10-452e-b901-33e0b8526f05",
+      "id": "73c312f6-c972-4412-a261-8ebb97437b4a",
       "name": "Buscar Alertas Não Processados",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1,
       "position": [
-        224,
-        304
+        -3088,
+        688
       ]
     },
     {
       "parameters": {
         "jsCode": "// Agrupar alertas por agente E rule_id, filtrar não processados\nconst alerts = $input.all();\n\n// Filtrar alertas não processados (processado = “0” significa não processado)\nconst unprocessedAlerts = alerts.filter(item => item.json.processed === \"0\" || item.json.processed === 0);\n\n// Agrupar por agente + rule_id\nconst groupedByAgentAndRule = {};\n\nunprocessedAlerts.forEach(item => {\n  const agentName = item.json.agent_name;\n  const agentIp = item.json.agent_ip;\n  const ruleId = item.json.rule_id;\n  const key = `${agentName}_${agentIp}_${ruleId}`;\n  \n  if (!groupedByAgentAndRule[key]) {\n    groupedByAgentAndRule[key] = {\n      agent_name: agentName,\n      agent_ip: agentIp,\n      agent_id: item.json.agent_id,\n      rule_id: ruleId,\n      rule_description: item.json.rule_description,\n      rule_level: item.json.rule_level,\n      rule_groups: item.json.rule_groups,\n      alerts: [],\n      alert_count: 0\n    };\n  }\n  \n  // Criar objeto de alerta estruturado\n  groupedByAgentAndRule[key].alerts.push({\n    id: item.json.id,\n    rule_id: item.json.rule_id,\n    rule_level: item.json.rule_level,\n    rule_description: item.json.rule_description,\n    rule_groups: item.json.rule_groups,\n    alert_data: item.json.alert_data,\n    timestamp: item.json.timestamp,\n    location: item.json.location,\n    raw_body: item.json.raw_body\n  });\n  groupedByAgentAndRule[key].alert_count++;\n});\n\n// Converta em matriz e classifique por número de alertas (descendente)\nconst result = Object.values(groupedByAgentAndRule).sort((a, b) => b.alert_count - a.alert_count);\n\nreturn result.map(item => ({ json: item }));"
       },
-      "id": "d5f01cd9-9c57-4423-acdc-ed0b3ff003f3",
+      "id": "d7776472-5e4f-4a3e-96b8-44e934a6a2e1",
       "name": "Agrupar Alertas por Agente e Regra",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        448,
-        304
+        -2864,
+        688
       ]
     },
     {
       "parameters": {
         "jsCode": "// 🧠 Buscar memória do agente - últimos 5 alertas analisados para este agente\nconst groupedAlerts = $input.all();\nconst enrichedAlerts = [];\n\n// Obter todos os alertas do node Buscar Alertas Não Processados\nconst allAlertsNode = $('Buscar Alertas Não Processados');\nconst allAlerts = allAlertsNode.all();\n\n// Para cada alerta agrupado, encontrar sua memória\nfor (const groupedItem of groupedAlerts) {\n  const agentName = groupedItem.json.agent_name;\n  const agentIp = groupedItem.json.agent_ip;\n  \n  // Filtrar alertas processados deste agente com vereditos\n  const agentMemory = allAlerts\n    .filter(item => {\n      const alert = item.json;\n      return alert.agent_name === agentName &&\n             alert.agent_ip === agentIp &&\n             (alert.processed === \"1\" || alert.processed === 1) &&\n             alert.verdict != null &&\n             alert.verdict !== '';\n    })\n    .sort((a, b) => {\n      const timeA = new Date(a.json.analyzed_at || a.json.timestamp || 0).getTime();\n      const timeB = new Date(b.json.analyzed_at || b.json.timestamp || 0).getTime();\n      return timeB - timeA;\n    })\n    .slice(0, 5)\n    .map(item => ({\n      timestamp: item.json.analyzed_at || item.json.timestamp,\n      rule_id: item.json.rule_id,\n      rule_description: item.json.rule_description,\n      rule_level: item.json.rule_level,\n      alert_data: (item.json.alert_data || 'N/A').substring(0, 200),\n      verdict: item.json.verdict,\n      verdict_confidence: item.json.verdict_confidence,\n      ai_summary: item.json.ai_summary\n    }));\n  \n  enrichedAlerts.push({\n    json: {\n      ...groupedItem.json,\n      agent_memory: agentMemory,\n      has_memory: agentMemory.length > 0\n    }\n  });\n}\n\nreturn enrichedAlerts;"
       },
-      "id": "8e6fb5f5-ed49-4915-95d7-ebe87d7a24cb",
+      "id": "fd1169f3-e834-4cd4-8638-0af7540f3a23",
       "name": "🧠 Buscar Memória do Agente",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        672,
-        304
+        -2640,
+        688
       ]
     },
     {
@@ -384,13 +377,13 @@
         "mode": "runOnceForEachItem",
         "jsCode": "const agentName = $input.item.json.agent_name;\nconst agentIp = $input.item.json.agent_ip;\nconst agentId = $input.item.json.agent_id;\nconst ruleId = $input.item.json.rule_id;\nconst ruleDescription = $input.item.json.rule_description;\nconst ruleLevel = $input.item.json.rule_level;\nconst ruleGroups = $input.item.json.rule_groups;\nconst alerts = $input.item.json.alerts;\nconst alertCount = $input.item.json.alert_count;\nconst agentMemory = $input.item.json.agent_memory || [];\nconst hasMemory = $input.item.json.has_memory;\n\nconst alertSummary = alerts.map((alert, idx) => {\n  return `Alerta ${idx + 1}:\n  - ID do Alerta: ${alert.id}\n  - Data/Hora: ${alert.timestamp}\n  - Localização: ${alert.location}\n  - Mensagem do Alerta: ${alert.alert_data}\n  \n  Detalhes do Evento:\n  ${alert.raw_body ? JSON.stringify(JSON.parse(alert.raw_body), null, 2) : 'N/D'}`;\n}).join('\\n\\n---\\n\\n');\n\n// 🧠 Formatar contexto de memória\nlet memoryContext = '';\nif (hasMemory && agentMemory.length > 0) {\n  memoryContext = `\n🧠 CONTEXTO HISTÓRICO - Últimos ${agentMemory.length} alertas analisados para este agente:\n\n${agentMemory.map((mem, idx) => `\nMemória ${idx + 1} (${new Date(mem.timestamp).toLocaleDateString('pt-BR')}):\n- ID da Regra: ${mem.rule_id} - ${mem.rule_description}\n- Nível da Regra: ${mem.rule_level}\n- Alerta: ${mem.alert_data?.substring(0, 200)}...\n- Veredito Anterior: **${mem.verdict}** (${mem.verdict_confidence} de confiança)\n- Análise: ${mem.ai_summary}`).join('\\n\\n---\\n')}\n\n💡 Use este contexto histórico para:\n1. Identificar padrões e comportamentos recorrentes\n2. Manter consistência com vereditos passados para alertas similares\n3. Detectar mudanças no comportamento normal\n4. Reconhecer falsos positivos previamente identificados\n`;\n} else {\n  memoryContext = '\\n⚠️ SEM CONTEXTO HISTÓRICO: Esta é a primeira análise para este agente. Baseie seu veredito apenas nos alertas atuais.\\n';\n}\n\nconst prompt = `Você é um analista avançado de cibersegurança com MEMÓRIA de análises passadas de alertas. Analise os seguintes alertas do agente \"${agentName}\" (ID: ${agentId}, IP: ${agentIp}).\n\n**INFORMAÇÕES DA REGRA:**\n- ID da Regra: ${ruleId}\n- Descrição da Regra: ${ruleDescription}\n- Nível da Regra: ${ruleLevel}\n- Grupos da Regra: ${ruleGroups}\n${memoryContext}\n**ALERTAS ATUAIS PARA ANALISAR:**\nTotal de Novos Alertas para esta Regra: ${alertCount}\n\n${alertSummary}\n\nSua tarefa (RESPONDA SEMPRE EM PORTUGUÊS DO BRASIL):\n1. Revisar o contexto histórico acima (se disponível) para entender padrões passados\n2. Analisar estas ${alertCount} novas instâncias da Regra ${ruleId}\n3. Comparar com vereditos passados - estes alertas são consistentes com o comportamento anterior?\n4. Identificar quaisquer NOVOS padrões ou anomalias comparados ao histórico\n5. Determinar se são Verdadeiros Positivos (ameaças genuínas) ou Falsos Positivos\n6. Considerar o nível da regra (${ruleLevel}) ao avaliar a severidade\n7. Fornecer um veredito claro com nível de confiança\n8. Dar recomendações específicas\n\nForneça sua resposta no seguinte formato JSON (EM PORTUGUÊS):\n{\n  \"agent_name\": \"${agentName}\",\n  \"agent_ip\": \"${agentIp}\",\n  \"rule_id\": \"${ruleId}\",\n  \"rule_description\": \"${ruleDescription}\",\n  \"total_alerts\": ${alertCount},\n  \"verdict\": \"Verdadeiro Positivo\" ou \"Falso Positivo\" ou \"Misto\",\n  \"confidence\": \"Alta\" ou \"Média\" ou \"Baixa\",\n  \"summary\": \"Resumo breve das descobertas para esta regra específica\",\n  \"detailed_analysis\": \"Análise detalhada comparando alertas atuais com padrões históricos\",\n  \"recommendations\": \"Recomendações específicas para este agente e regra\",\n  \"pattern_changes\": \"Quaisquer mudanças detectadas comparadas ao comportamento histórico (ou 'N/D' se sem histórico)\"\n}`;\n\nreturn {\n  agent_name: agentName,\n  agent_ip: agentIp,\n  agent_id: agentId,\n  rule_id: ruleId,\n  rule_description: ruleDescription,\n  alert_count: alertCount,\n  has_memory: hasMemory,\n  prompt: prompt,\n  raw_alerts: alerts\n};"
       },
-      "id": "8907a524-d112-4055-9dad-6151ec3b6082",
+      "id": "6bf5aa08-d721-45bc-9aab-ca50d42df819",
       "name": "Preparar Prompt Aprimorado com Memória",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        896,
-        304
+        -2416,
+        688
       ]
     },
     {
@@ -398,13 +391,13 @@
         "mode": "runOnceForEachItem",
         "jsCode": "// Analisar resposta da IA com tratamento robusto de erros\nconst aiResponse = $input.item.json.message?.content || $input.item.json.content || $input.item.json.choices?.[0]?.message?.content;\nconst originalData = $node[\"Preparar Prompt Aprimorado com Memória\"].json;\n\nfunction extractField(text, fieldName) {\n  const patterns = [\n    new RegExp(`\"${fieldName}\"\\\\s*:\\\\s*\"([^\"]+)\"`, 'i'),\n    new RegExp(`\"${fieldName}\"\\\\s*:\\\\s*([0-9]+)`, 'i'),\n    new RegExp(`\"${fieldName}\"\\\\s*:\\\\s*([A-Za-z\\\\s]+)(?=,|\\\\n|\\\\})`,'i')\n  ];\n  \n  for (const pattern of patterns) {\n    const match = text.match(pattern);\n    if (match && match[1]) return match[1].trim();\n  }\n  return null;\n}\n\nfunction fixJSON(jsonStr) {\n  let fixed = jsonStr.trim()\n    .replace(/```json\\s*/g, '')\n    .replace(/```\\s*/g, '');\n  \n  const openBraces = (fixed.match(/\\{/g) || []).length;\n  const closeBraces = (fixed.match(/\\}/g) || []).length;\n  \n  if (openBraces > closeBraces) {\n    fixed += '\\n}'.repeat(openBraces - closeBraces);\n  }\n  \n  return fixed.replace(/,\\s*\\}/g, '}');\n}\n\nlet analysis;\n\ntry {\n  const jsonMatch = aiResponse.match(/```json\\s*([\\s\\S]*?)```/) || \n                    aiResponse.match(/\\{[\\s\\S]*\\}/);\n  \n  if (jsonMatch) {\n    let jsonStr = fixJSON(jsonMatch[1] || jsonMatch[0]);\n    \n    try {\n      analysis = JSON.parse(jsonStr);\n    } catch (e) {\n      let bestParse = null;\n      for (let i = jsonStr.length; i > 50; i -= 10) {\n        try {\n          const testStr = fixJSON(jsonStr.substring(0, i));\n          bestParse = JSON.parse(testStr);\n          analysis = bestParse;\n          break;\n        } catch (e2) {}\n      }\n      if (!bestParse) throw new Error('Não foi possível analisar JSON');\n    }\n  } else {\n    throw new Error('Nenhum JSON encontrado');\n  }\n  \n  if (!analysis.verdict || analysis.verdict === 'Unable to determine') {\n    const extractedVerdict = extractField(aiResponse, 'verdict');\n    if (extractedVerdict && extractedVerdict !== 'Unable to determine') {\n      analysis.verdict = extractedVerdict;\n    }\n  }\n  \n  if (!analysis.confidence) {\n    analysis.confidence = extractField(aiResponse, 'confidence') || 'Média';\n  }\n  \n  if (!analysis.summary) {\n    analysis.summary = extractField(aiResponse, 'summary') || 'Análise concluída';\n  }\n  \n} catch (error) {\n  analysis = {\n    agent_name: originalData.agent_name,\n    agent_ip: originalData.agent_ip,\n    rule_id: originalData.rule_id,\n    verdict: extractField(aiResponse, 'verdict') || 'Unable to determine',\n    confidence: extractField(aiResponse, 'confidence') || 'Low',\n    summary: extractField(aiResponse, 'summary') || aiResponse.substring(0, 500)\n  };\n}\n\nanalysis.agent_name = analysis.agent_name || originalData.agent_name;\nanalysis.agent_ip = analysis.agent_ip || originalData.agent_ip;\nanalysis.rule_id = analysis.rule_id || originalData.rule_id;\nanalysis.verdict = analysis.verdict || 'Unable to determine';\n\nreturn {\n  ...analysis,\n  raw_ai_response: aiResponse,\n  analysis_timestamp: new Date().toISOString(),\n  raw_alerts: originalData.raw_alerts,\n  had_memory_context: originalData.has_memory\n};"
       },
-      "id": "4c7b3ad9-6661-4ddf-878b-f771249f60c2",
+      "id": "a29df446-0ae1-4bf6-9f13-ab3c36462059",
       "name": "Analisar Resposta da IA",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1344,
-        304
+        -1968,
+        688
       ]
     },
     {
@@ -412,39 +405,39 @@
         "aggregate": "aggregateAllItemData",
         "options": {}
       },
-      "id": "1afc65f2-40e6-4b08-8407-d66eed84e0e8",
+      "id": "3055f9f2-a8ba-427c-be87-b2d8af27c030",
       "name": "Agregar Todos os Resultados",
       "type": "n8n-nodes-base.aggregate",
       "typeVersion": 1,
       "position": [
-        1568,
-        304
+        -1744,
+        688
       ]
     },
     {
       "parameters": {
         "jsCode": "// Gerar relatório HTML com indicadores de memória\nconst inputItems = $input.all();\nconst analyses = inputItems.flatMap(item => {\n  const d = item.json?.data;\n  return Array.isArray(d) ? d : [item.json];\n});\n\nconst reportDate = new Date().toLocaleDateString('pt-BR', { \n  weekday: 'long', \n  year: 'numeric', \n  month: 'long', \n  day: 'numeric' \n});\n\nconst uniqueAgents = new Set(analyses.map(a => `${a.agent_name}_${a.agent_ip}`)).size;\nconst uniqueRules = new Set(analyses.map(a => a.rule_id)).size;\nconst totalAlerts = analyses.reduce((sum, a) => sum + (a.total_alerts || 0), 0);\nconst truePositives = analyses.filter(a => a.verdict === 'Verdadeiro Positivo' || a.verdict === 'True Positive').length;\nconst falsePositives = analyses.filter(a => a.verdict === 'Falso Positivo' || a.verdict === 'False Positive').length;\nconst withMemory = analyses.filter(a => a.had_memory_context).length;\n\nconst tableRows = analyses.map(analysis => {\n  const verdictColor = \n    (analysis.verdict === 'Verdadeiro Positivo' || analysis.verdict === 'True Positive') ? '#dc3545' :\n    (analysis.verdict === 'Falso Positivo' || analysis.verdict === 'False Positive') ? '#28a745' : '#ffc107';\n  \n  const memoryBadge = analysis.had_memory_context \n    ? '<span style=\"background: #4CAF50; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7em;\">🧠 Memória</span>'\n    : '<span style=\"background: #9E9E9E; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7em;\">⚠️ Primeira Análise</span>';\n\n  return `\n    <tr>\n      <td style=\"padding: 12px; border: 1px solid #ddd;\">\n        <strong>${analysis.agent_name}</strong>${memoryBadge}<br>\n        <span style=\"font-size: 0.85em; color: #6c757d;\">${analysis.agent_ip}</span>\n      </td>\n      <td style=\"padding: 12px; border: 1px solid #ddd;\">\n        <strong>${analysis.rule_id}</strong><br>\n        <span style=\"font-size: 0.85em; color: #6c757d;\">${analysis.rule_description || 'N/D'}</span>\n      </td>\n      <td style=\"padding: 12px; border: 1px solid #ddd; text-align: center;\">\n        <span style=\"padding: 4px 10px; background: #f8f9fa; border-radius: 12px; font-weight: bold;\">${analysis.total_alerts}</span>\n      </td>\n      <td style=\"padding: 12px; border: 1px solid #ddd;\">${analysis.summary}</td>\n      <td style=\"padding: 12px; border: 1px solid #ddd; text-align: center;\">\n        <span style=\"color: ${verdictColor}; font-weight: bold;\">${analysis.verdict}</span><br>\n        <span style=\"font-size: 0.85em; color: #6c757d;\">${analysis.confidence} de confiança</span>\n      </td>\n      <td style=\"padding: 12px; border: 1px solid #ddd; font-size: 0.9em;\">${analysis.recommendations}</td>\n    </tr>\n  `;\n}).join('');\n\nconst htmlReport = `\n<!DOCTYPE html>\n<html lang=\"pt-BR\">\n<head>\n  <meta charset=\"UTF-8\">\n  <title>Relatório de Segurança Wazuh - ${reportDate}</title>\n  <style>\n    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 1600px; margin: 0 auto; padding: 20px; background: #f5f5f5; }\n    .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n    .header { border-bottom: 3px solid #007bff; padding-bottom: 20px; margin-bottom: 30px; }\n    h1 { color: #007bff; margin: 0; }\n    .summary-grid { display: flex; gap: 15px; margin: 30px 0; flex-wrap: wrap; }\n    .card { flex: 1; min-width: 150px; background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #007bff; }\n    .card h3 { margin: 0 0 5px 0; font-size: 0.85em; color: #6c757d; text-transform: uppercase; }\n    .card .value { font-size: 2em; font-weight: bold; color: #333; }\n    table { width: 100%; border-collapse: collapse; margin-top: 20px; }\n    th { background: #007bff; color: white; padding: 12px; text-align: left; }\n    tr:nth-child(even) { background: #f8f9fa; }\n    tr:hover { background: #e9ecef; }\n    .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #6c757d; font-size: 0.9em; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>🛡️ Relatório de Segurança Wazuh com Memória de IA</h1>\n      <div class=\"subtitle\">${reportDate}</div>\n    </div>\n    <div class=\"summary-grid\">\n      <div class=\"card\"><h3>Agentes Únicos</h3><div class=\"value\">${uniqueAgents}</div></div>\n      <div class=\"card\"><h3>Regras Únicas</h3><div class=\"value\">${uniqueRules}</div></div>\n      <div class=\"card\"><h3>Total de Alertas</h3><div class=\"value\">${totalAlerts}</div></div>\n      <div class=\"card\" style=\"border-left-color: #4CAF50;\"><h3>🧠 Com Memória</h3><div class=\"value\" style=\"color: #4CAF50;\">${withMemory}</div></div>\n      <div class=\"card\" style=\"border-left-color: #dc3545;\"><h3>Verdadeiros Positivos</h3><div class=\"value\" style=\"color: #dc3545;\">${truePositives}</div></div>\n      <div class=\"card\" style=\"border-left-color: #28a745;\"><h3>Falsos Positivos</h3><div class=\"value\" style=\"color: #28a745;\">${falsePositives}</div></div>\n    </div>\n    <h2>🧠 Análise de IA</h2>\n    <table>\n      <thead><tr><th>Agente</th><th>Regra</th><th>Quantidade</th><th>Resumo</th><th>Veredito</th><th>Recomendações</th></tr></thead>\n      <tbody>${tableRows}</tbody>\n    </table>\n    <div class=\"footer\">\n      <p><strong>🧠 Agente de IA</strong> - Aprendendo com vereditos passados</p>\n      <p>Gerado por n8n + OpenAI GPT</p>\n      <p>${new Date().toISOString()}</p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nreturn {\n  html_report: htmlReport,\n  report_date: reportDate,\n  summary: { unique_agents: uniqueAgents, unique_rules: uniqueRules, total_alerts: totalAlerts },\n  analyses: analyses\n};"
       },
-      "id": "e78c5565-a636-4928-8f64-821858a9ed99",
+      "id": "11cb7982-bc50-49d9-9c81-45b491e65ad4",
       "name": "Gerar Relatório HTML",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1792,
-        208
+        -1520,
+        496
       ]
     },
     {
       "parameters": {
         "jsCode": "// Gerar alerta individual em formato BBCode para Bitrix24\nconst inputItems = $input.all();\nconst analyses = inputItems.flatMap(item => {\n  const d = item.json?.data;\n  return Array.isArray(d) ? d : [item.json];\n});\n\n// Processar cada análise individualmente\nconst results = analyses.map(analysis => {\n  const level = analysis.raw_alerts && analysis.raw_alerts[0] && analysis.raw_alerts[0].rule_level \n    ? analysis.raw_alerts[0].rule_level \n    : 0;\n  \n  // Determinar severidade baseada no rule_level\n  let severidade = '';\n  if (level >= 12) {\n    severidade = 'Crítica';\n  } else if (level >= 7) {\n    severidade = 'Alta';\n  } else if (level >= 3) {\n    severidade = 'Média';\n  } else {\n    severidade = 'Baixa';\n  }\n\n  // Badge de memória\n  const memoriaBadge = analysis.had_memory_context \n    ? '[COLOR=#4CAF50]🧠 Análise com Contexto Histórico[/COLOR]'\n    : '[COLOR=#9E9E9E]⚠️ Primeira Análise[/COLOR]';\n\n  // Formatar data\n  const dataIncidente = analysis.raw_alerts && analysis.raw_alerts[0] \n    ? new Date(analysis.raw_alerts[0].timestamp).toLocaleString('pt-BR')\n    : new Date().toLocaleString('pt-BR');\n\n  // Nome do alerta\n  const nomeAlerta = analysis.rule_description || 'N/D';\n\n  // Montar mensagem BBCode\n  let message = `🚨 [B]Alerta de Segurança Wazuh[/B]\\n\\n`;\n  message += `[B]Nome do Alerta:[/B] ${nomeAlerta}\\n`;\n  message += `[B]Origem:[/B] ${analysis.agent_ip || 'N/D'} (${analysis.agent_name || 'N/D'})\\n`;\n  message += `[B]Severidade:[/B] ${severidade} (Nível ${level})\\n`;\n  message += `[B]Data do Incidente:[/B] ${dataIncidente}\\n`;\n  message += `[B]Quantidade de Alertas:[/B] ${analysis.total_alerts || 1}\\n`;\n  message += `${memoriaBadge}\\n\\n`;\n\n  message += `🔍 [B]Resumo da Análise[/B]\\n`;\n  message += `${analysis.summary || analysis.ai_summary || 'Análise em processamento'}\\n\\n`;\n\n  message += `⚖️ [B]Veredito[/B]\\n`;\n  message += `${analysis.verdict || 'Não determinado'} - Confiança: ${analysis.confidence || 'N/D'}\\n\\n`;\n\n  message += `⚙️ [B]Ações Recomendadas[/B]\\n`;\n  const recomendacoes = analysis.recommendations || 'Nenhuma recomendação específica disponível';\n  message += `${recomendacoes}`;\n\n  if (analysis.detailed_analysis) {\n    message += `\\n\\n📋 [B]Análise Detalhada[/B]\\n`;\n    message += `${analysis.detailed_analysis}`;\n  }\n\n  if (analysis.pattern_changes && analysis.pattern_changes !== 'N/D') {\n    message += `\\n\\n🔄 [B]Mudanças de Padrão[/B]\\n`;\n    message += `${analysis.pattern_changes}`;\n  }\n\n  if (message.length > 4000) {\n    message = message.substring(0, 3980) + '...\\n\\n[Mensagem truncada devido ao tamanho]';\n  }\n\n  return {\n    bitrix_message: message,\n    agent_name: analysis.agent_name,\n    rule_id: analysis.rule_id,\n    verdict: analysis.verdict,\n    severity: severidade,\n    rule_level: level\n  };\n});\n\nreturn results;"
       },
-      "id": "5a21e4d4-1a9c-4061-9967-a9c36d2eaccb",
+      "id": "74f98fb8-1da3-43b2-b659-641d34e0e4d0",
       "name": "Gerar Alertas Bitrix",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1792,
-        496
+        -1520,
+        880
       ]
     },
     {
@@ -466,13 +459,13 @@
         },
         "options": {}
       },
-      "id": "cb5fd714-3ba0-4d9a-bad3-4d971038e2f6",
+      "id": "9f2c3078-b330-4871-8e11-c1c582f0690e",
       "name": "Enviar para Bitrix24",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2016,
-        496
+        -1296,
+        784
       ]
     },
     {
@@ -483,19 +476,19 @@
         "html": "=={{ $json.html_report }}",
         "options": {}
       },
-      "id": "c3abae09-7e88-4ac5-a46e-7e536defe07c",
+      "id": "d92c93ab-941f-4090-981b-9210e6b73cad",
       "name": "Enviar Relatório por Email",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        2016,
-        112
+        -1296,
+        400
       ],
       "webhookId": "a94fb98f-98c2-47db-b61f-b38360c985b3",
       "credentials": {
         "smtp": {
-          "id": "YOUR_SMTP_CREDENTIAL_ID",
-          "name": "SOC - SMTP"
+          "id": "4wuqvlEe5wHK9R9P",
+          "name": "SMTP account"
         }
       }
     },
@@ -503,13 +496,13 @@
       "parameters": {
         "jsCode": "// Extrair IDs de alertas e vereditos para armazenamento\nconst analyses = $input.item.json.analyses || [];\nconst alertsToUpdate = [];\n\nanalyses.forEach(analysis => {\n  const rawAlerts = analysis.raw_alerts || [];\n  rawAlerts.forEach(alert => {\n    if (alert.id) {\n      alertsToUpdate.push({\n        id: alert.id,\n        verdict: analysis.verdict,\n        verdict_confidence: analysis.confidence,\n        ai_summary: analysis.summary,\n        analyzed_at: analysis.analysis_timestamp,\n        processed: \"1\"\n      });\n    }\n  });\n});\n\nreturn alertsToUpdate.map(item => ({ json: item }));"
       },
-      "id": "6e11d7d6-6f75-4f94-b035-5379cc700803",
+      "id": "656b54d3-61bb-43bb-92a7-a04674becd1e",
       "name": "🧠 Preparar Atualizações de Vereditos",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2016,
-        304
+        -1296,
+        592
       ]
     },
     {
@@ -541,26 +534,26 @@
         },
         "options": {}
       },
-      "id": "f853b839-d4fa-43f4-bd94-b2b4f5c48602",
+      "id": "2829a608-f51f-4ec8-8fcf-22e38e9fb3df",
       "name": "🧠 Armazenar Vereditos na Tabela de Dados",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1,
       "position": [
-        2240,
-        304
+        -1072,
+        592
       ]
     },
     {
       "parameters": {
         "jsCode": "// Calcular parâmetros de limpeza\nconst retentionDays = 3;\nconst minAlertsPerHost = 5;\n\nconst cutoffDate = new Date();\ncutoffDate.setDate(cutoffDate.getDate() - retentionDays);\n\nreturn {\n  cutoff_date: cutoffDate.toISOString(),\n  retention_days: retentionDays,\n  min_alerts_per_host: minAlertsPerHost,\n  cleanup_timestamp: new Date().toISOString()\n};"
       },
-      "id": "4fe24fc6-dde2-44e5-8572-8cfc0ae308bf",
+      "id": "cf5e6e8c-43f1-4ebf-94bf-05d166b2e86e",
       "name": "Calcular Parâmetros de Limpeza",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2464,
-        304
+        -848,
+        592
       ]
     },
     {
@@ -575,26 +568,26 @@
         },
         "returnAll": true
       },
-      "id": "c26101fa-388b-425f-9cff-fd1b6d701718",
+      "id": "9a682ab0-c957-4890-b539-845f441c1822",
       "name": "Buscar Todos Alertas para Limpeza",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1,
       "position": [
-        2688,
-        304
+        -624,
+        592
       ]
     },
     {
       "parameters": {
-        "jsCode": "// Exclusão Inteligente: Manter os Últimos N por Host\nconst cutoffDate = new Date($node['Calcular Parâmetros de Limpeza'].json.cutoff_date);\nconst minAlertsPerHost = $node['Calcular Parâmetros de Limpeza'].json.min_alerts_per_host;\nconst allAlerts = $input.all();\n\nif (allAlerts.length === 0) return [];\n\nconst alertsByHost = {};\nallAlerts.forEach(item => {\n  const alert = item.json;\n  const hostKey = `${alert.agent_name}_${alert.agent_ip}`;\n  if (!alertsByHost[hostKey]) alertsByHost[hostKey] = [];\n  alertsByHost[hostKey].push({...alert, alertDate: new Date(alert.analyzed_at || alert.timestamp || alert.created_at)});\n});\n\nconst mustKeepAlertIds = new Set();\nObject.keys(alertsByHost).forEach(hostKey => {\n  const processedWithVerdicts = alertsByHost[hostKey]\n    .filter(alert => (alert.processed === \"1\" || alert.processed === 1) && alert.verdict)\n    .sort((a, b) => b.alertDate.getTime() - a.alertDate.getTime())\n    .slice(0, minAlertsPerHost);\n  processedWithVerdicts.forEach(alert => mustKeepAlertIds.add(alert.id));\n});\n\nconst alertsToDelete = [];\nallAlerts.forEach(item => {\n  const alert = item.json;\n  const alertDate = new Date(alert.analyzed_at || alert.timestamp || alert.created_at);\n  const shouldDelete = (alert.processed === \"1\" || alert.processed === 1) && \n                       alertDate < cutoffDate && \n                       !mustKeepAlertIds.has(alert.id);\n  if (shouldDelete) {\n    alertsToDelete.push({ json: { id: alert.id } });\n  }\n});\n\nreturn alertsToDelete;"
+        "jsCode": "// Exclusão Inteligente: Manter os Últimos N por Host\n// Recebe apenas alertas SEM bitrix_task_id\nconst cutoffDate = new Date($node['Calcular Parâmetros de Limpeza'].json.cutoff_date);\nconst minAlertsPerHost = $node['Calcular Parâmetros de Limpeza'].json.min_alerts_per_host;\nconst allAlerts = $input.all();\n\nif (allAlerts.length === 0) return [];\n\nconst alertsByHost = {};\nallAlerts.forEach(item => {\n  const alert = item.json;\n  const hostKey = `${alert.agent_name}_${alert.agent_ip}`;\n  if (!alertsByHost[hostKey]) alertsByHost[hostKey] = [];\n  alertsByHost[hostKey].push({...alert, alertDate: new Date(alert.analyzed_at || alert.timestamp || alert.created_at)});\n});\n\nconst mustKeepAlertIds = new Set();\nObject.keys(alertsByHost).forEach(hostKey => {\n  const processedWithVerdicts = alertsByHost[hostKey]\n    .filter(alert => (alert.processed === \"1\" || alert.processed === 1) && alert.verdict)\n    .sort((a, b) => b.alertDate.getTime() - a.alertDate.getTime())\n    .slice(0, minAlertsPerHost);\n  processedWithVerdicts.forEach(alert => mustKeepAlertIds.add(alert.id));\n});\n\nconst alertsToDelete = [];\nallAlerts.forEach(item => {\n  const alert = item.json;\n  const alertDate = new Date(alert.analyzed_at || alert.timestamp || alert.created_at);\n  const shouldDelete = (alert.processed === \"1\" || alert.processed === 1) && \n                       alertDate < cutoffDate && \n                       !mustKeepAlertIds.has(alert.id);\n  if (shouldDelete) {\n    alertsToDelete.push({ json: { id: alert.id } });\n  }\n});\n\nconsole.log(`Alertas sem task_id para deletar: ${alertsToDelete.length}`);\nreturn alertsToDelete;"
       },
-      "id": "de96f7fa-ebd9-4740-8d08-044ee9931e15",
+      "id": "44de913a-89b7-47c5-b5fc-cdf6628bd59b",
       "name": "🧹 Lógica de Exclusão Inteligente",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2912,
-        304
+        -400,
+        592
       ],
       "alwaysOutputData": true
     },
@@ -617,42 +610,42 @@
         },
         "options": {}
       },
-      "id": "a078baf7-d5fc-4d90-8444-7f12870d23aa",
+      "id": "1c6faf74-a72b-4fac-8932-26f6097e0ee6",
       "name": "🧹 Excluir Alertas Antigos",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1,
       "position": [
-        3136,
-        304
+        -176,
+        592
       ]
     },
     {
       "parameters": {
         "jsCode": "const deletedCount = $input.all().length;\nconst params = $node['Calcular Parâmetros de Limpeza'].json;\n\nconsole.log('Limpeza Completa - Excluídos:', deletedCount);\n\nreturn { \n  json: { \n    cleanup_completed: true, \n    alerts_deleted: deletedCount,\n    retention_days: params.retention_days,\n    completed_at: new Date().toISOString()\n  } \n};"
       },
-      "id": "07e43a46-34b3-4d07-8e57-29d895f2969c",
+      "id": "e337487a-aefa-4795-8e6e-00a2b76c478a",
       "name": "Registrar Resumo da Limpeza",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3360,
-        304
+        48,
+        592
       ]
     },
     {
       "parameters": {
-        "content": "## FLUXO DE ANÁLISE DIÁRIA WAZUH\n\nExecuta a cada 6 horas para:\n1. Buscar alertas não processados\n2. Agrupar por agente + regra\n3. Carregar memória histórica\n4. Analisar com IA\n5. Armazenar vereditos\n6. Enviar relatório por email\n7. Enviar Alerta via Bitrix24\n8. Limpar dados antigos",
-        "height": 352,
+        "content": "## FLUXO DE ANÁLISE DIÁRIA WAZUH\n\nExecuta a cada 6 horas para:\n1. Buscar alertas não processados\n2. Agrupar por agente + regra\n3. Carregar memória histórica\n4. Analisar com IA\n5. Armazenar vereditos\n6. Enviar relatório por email\n7. Enviar Alerta via Bitrix24 (mensagem)\n8. Criar Tarefa no Bitrix24 (com detecção de duplicadas)\n   - Verifica localmente se já existe tarefa\n   - Verifica no Bitrix24 se tarefa está ativa\n   - Só cria nova tarefa se não houver ativa\n   - Armazena ID da tarefa no banco\n9. Limpar dados antigos",
+        "height": 432,
         "width": 976,
         "color": 4
       },
-      "id": "b5584515-b91e-41aa-8e42-fe1f6d316e90",
+      "id": "6e7231f4-c2db-4062-9d5a-2eac77652f3b",
       "name": "Nota Adesiva - Visão Geral1",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        16,
-        -96
+        -3328,
+        880
       ]
     },
     {
@@ -675,20 +668,541 @@
         "jsonBody": "={\n  \"model\": \"gpt-4-turbo\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ],\n  \"temperature\": 0.3,\n  \"max_tokens\": 4000\n}",
         "options": {}
       },
-      "id": "e2cc09a6-7036-429f-9948-83382d6aba65",
+      "id": "52d2418b-5052-465a-aded-d3333f5eaf1e",
       "name": "Análise de IA",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1120,
-        304
+        -2192,
+        688
       ],
       "credentials": {
         "openAiApi": {
-          "id": "YOUR_OPENAI_CREDENTIAL_ID",
-          "name": "[INFRA] Wazuh Automation"
+          "id": "P3KoR7u3FAeYPnAF",
+          "name": "OpenAi account"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Verificar se já existe tarefa aberta para este alerta\nconst currentItems = $input.all();\nconst allAlertsNode = $('Buscar Alertas Não Processados');\nconst allAlerts = allAlertsNode.all();\n\nconst itemsToProcess = [];\n\nfor (const item of currentItems) {\n  const agentName = item.json.agent_name;\n  const ruleId = item.json.rule_id;\n  const ruleLevel = item.json.rule_level;\n  \n  // Buscar alertas com a mesma combinação agent_name + rule_id + rule_level\n  const existingTask = allAlerts.find(alert => {\n    return alert.json.agent_name === agentName &&\n           alert.json.rule_id === ruleId &&\n           alert.json.rule_level === ruleLevel &&\n           alert.json.bitrix_task_id != null &&\n           alert.json.bitrix_task_id !== '';\n  });\n  \n  if (existingTask) {\n    // Encontrou tarefa existente - passa com o ID para verificação\n    itemsToProcess.push({\n      json: {\n        ...item.json,\n        existing_task_id: existingTask.json.bitrix_task_id,\n        needs_verification: true\n      }\n    });\n  } else {\n    // Não encontrou tarefa - pode criar nova\n    itemsToProcess.push({\n      json: {\n        ...item.json,\n        existing_task_id: null,\n        needs_verification: false\n      }\n    });\n  }\n}\n\nreturn itemsToProcess;"
+      },
+      "id": "af741dad-3a42-4045-a4b0-a507428e0d00",
+      "name": "Verificar Tarefas Existentes Localmente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1296,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.needs_verification }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f7533a1b-9628-48e5-9520-757505dec86f",
+      "name": "Filtrar Itens para Verificação",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1072,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_DOMAIN.bitrix24.com.br/rest/YOUR_USER_ID/YOUR_WEBHOOK_TOKEN/tasks.task.get.json",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "taskId",
+              "value": "={{ $json.existing_task_id }}"
+            },
+            {
+              "name": "select[]",
+              "value": "STATUS"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "39e17e18-11de-4e95-ba52-74eb5acaa356",
+      "name": "Verificar Status da Tarefa no Bitrix24",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -848,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filtrar apenas tarefas concluídas (STATUS = 5) ou com erro\n// Se a tarefa está ativa (STATUS != 5), não criar nova tarefa\nconst items = $input.all();\nconst itemsToCreateTask = [];\n\nfor (const item of items) {\n  const status = item.json.result?.task?.status;\n  \n  // Se status = 5 (concluída) ou houve erro na busca, permitir criação de nova tarefa\n  if (status === '5' || status === 5 || item.json.error) {\n    // Mesclar com dados originais do nó anterior\n    const originalNode = $node['Filtrar Itens para Verificação'].item(item.itemIndex);\n    itemsToCreateTask.push({\n      json: {\n        ...originalNode.json,\n        task_was_completed: true\n      }\n    });\n  }\n  // Se status != 5, a tarefa ainda está ativa - ignorar (não adicionar ao array)\n}\n\nreturn itemsToCreateTask;"
+      },
+      "id": "ad65872a-a79c-4144-8ae3-e216800800cc",
+      "name": "Filtrar Tarefas Concluídas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "005c8a55-6086-4994-a71b-875def74c53a",
+      "name": "Mesclar Itens sem Tarefa e Concluídas",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar dados da tarefa para Bitrix24\nconst items = $input.all();\nconst tasksToCreate = [];\n\nfor (const item of items) {\n  // Extrair dados ou do array data (agregado) ou diretamente do json\n  const data = item.json.data ? item.json.data[0] : item.json;\n  \n  const agentName = data.agent_name || 'Desconhecido';\n  const agentIp = data.agent_ip || 'N/D';\n  const ruleId = data.rule_id || 'N/D';\n  const ruleDescription = data.rule_description || 'N/D';\n  const ruleLevel = data.rule_level || 0;\n  const severity = data.severity || 'Desconhecida';\n  const bitrixMessage = data.bitrix_message || '';\n  const verdict = data.verdict || 'Não determinado';\n  \n  // Título da tarefa - agora com agent_name para identificação única\n  const title = `[WAZUH] Alerta Crítico de Segurança - ${agentName}`;\n  \n  // Descrição completa incluindo a mensagem formatada\n  const description = bitrixMessage;\n  \n  // Preparar objeto para criação de tarefa\n  const taskData = {\n    title: title,\n    description: description,\n    responsible_ids: [95, 97],\n    auditor_ids: [51],\n    tags: ['Wazuh', 'Critico'],\n    // Metadados para rastreamento\n    agent_name: agentName,\n    agent_ip: agentIp,\n    rule_id: ruleId,\n    rule_level: ruleLevel,\n    severity: severity,\n    verdict: verdict,\n    raw_alerts: data.raw_alerts || []\n  };\n  \n  tasksToCreate.push({ json: taskData });\n}\n\nreturn tasksToCreate;"
+      },
+      "id": "d2e7f1c6-e33a-4bad-ba2f-4d406edb3bda",
+      "name": "Preparar Dados da Tarefa Bitrix24",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_DOMAIN.bitrix24.com.br/rest/YOUR_USER_ID/YOUR_WEBHOOK_TOKEN/tasks.task.add.json",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "fields[TITLE]",
+              "value": "={{ $json.title }}"
+            },
+            {
+              "name": "fields[DESCRIPTION]",
+              "value": "={{ $json.description }}"
+            },
+            {
+              "name": "fields[GROUP_ID]",
+              "value": "YOUR_GROUP_ID"
+            },
+            {
+              "name": "fields[RESPONSIBLE_ID]",
+              "value": "YOUR_RESPONSIBLE_ID"
+            },
+            {
+              "name": "fields[ACCOMPLICES][0]",
+              "value": "YOUR_ACCOMPLICE_ID_1"
+            },
+            {
+              "name": "fields[ACCOMPLICES][1]",
+              "value": "YOUR_ACCOMPLICE_ID_2"
+            },
+            {
+              "name": "fields[AUDITORS][0]",
+              "value": "YOUR_AUDITOR_ID"
+            },
+            {
+              "name": "fields[TAGS][]",
+              "value": "Wazuh"
+            },
+            {
+              "name": "fields[TAGS][]",
+              "value": "Critico"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d1e578de-ac7c-4f56-ad26-1d6109fd41fc",
+      "name": "Criar Tarefa no Bitrix24",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        48,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mapear o ID da tarefa criada de volta aos alertas originais\nconst items = $input.all();\nconst alertUpdates = [];\n\n// Obter todos os alertas não processados\nconst allAlertsNode = $('Buscar Alertas Não Processados');\nconst allAlerts = allAlertsNode.all();\n\n// Obter dados da análise agregada\nconst analysisItems = $('Agregar Todos os Resultados').all();\nif (!analysisItems || analysisItems.length === 0) {\n  console.log('Nenhum dado de análise encontrado');\n  return [];\n}\n\nconst aggregatedData = analysisItems[0].json.data || [];\n\n// Para cada tarefa criada\nfor (const item of items) {\n  const taskId = item.json.result?.task?.id;\n  \n  if (!taskId) {\n    console.log('Aviso: Tarefa criada mas ID não encontrado na resposta');\n    continue;\n  }\n  \n  console.log('Task ID criado:', taskId);\n  \n  // Para cada análise, buscar os alertas não processados correspondentes\n  for (const analysis of aggregatedData) {\n    const agentName = analysis.agent_name;\n    const ruleId = analysis.rule_id;\n    \n    // Buscar alertas não processados que correspondem\n    const matchingAlerts = allAlerts.filter(alert => {\n      return alert.json.agent_name === agentName &&\n             alert.json.rule_id === ruleId &&\n             (alert.json.processed === \"0\" || alert.json.processed === 0);\n    });\n    \n    // Atualizar cada alerta com o task ID\n    for (const alert of matchingAlerts) {\n      if (alert.json.id) {\n        alertUpdates.push({\n          json: {\n            id: alert.json.id,\n            bitrix_task_id: String(taskId)\n          }\n        });\n      }\n    }\n  }\n}\n\nconsole.log('Total de alertas para atualizar:', alertUpdates.length);\nreturn alertUpdates;"
+      },
+      "id": "48c19166-9689-4859-8d71-479e589dc72d",
+      "name": "Atualizar Alertas com ID da Tarefa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "YOUR_DATATABLE_ID",
+          "mode": "list",
+          "cachedResultName": "wazuh_alerts",
+          "cachedResultUrl": "/projects/YOUR_PROJECT_ID/datatables/YOUR_DATATABLE_ID"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "bitrix_task_id": "={{ $json.bitrix_task_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "agent_name",
+              "displayName": "agent_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "agent_ip",
+              "displayName": "agent_ip",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "agent_id",
+              "displayName": "agent_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "rule_id",
+              "displayName": "rule_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "rule_level",
+              "displayName": "rule_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "rule_description",
+              "displayName": "rule_description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "rule_groups",
+              "displayName": "rule_groups",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "alert_data",
+              "displayName": "alert_data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "raw_body",
+              "displayName": "raw_body",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "processed",
+              "displayName": "processed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "full_log",
+              "displayName": "full_log",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "collection_version",
+              "displayName": "collection_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "verdict",
+              "displayName": "verdict",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "verdict_confidence",
+              "displayName": "verdict_confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "ai_summary",
+              "displayName": "ai_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "analyzed_at",
+              "displayName": "analyzed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "bitrix_task_id",
+              "displayName": "bitrix_task_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "e1ef990b-f7c1-4417-9f8f-8eb1c0f29658",
+      "name": "Salvar ID da Tarefa",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        496,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "f1e2d3c4-b5a6-4890-f1e2-d3c4b5a67890",
+              "leftValue": "={{ $json.bitrix_task_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-4890-a1b2-c3d4e5f67890",
+      "name": "Separar Alertas com Task ID",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        492
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Preparar dados para consulta, salvando informações essenciais\nconst items = $input.all();\nconst prepared = [];\n\nfor (const item of items) {\n  prepared.push({\n    json: {\n      alert_id: item.json.id,\n      bitrix_task_id: item.json.bitrix_task_id,\n      agent_name: item.json.agent_name,\n      timestamp: item.json.timestamp || item.json.analyzed_at || item.json.created_at\n    }\n  });\n}\n\nconsole.log(`Preparados ${prepared.length} alertas para verificação de status no Bitrix24`);\nreturn prepared;"
+      },
+      "id": "e2f3a4b5-c6d7-4890-e2f3-a4b5c6d78902",
+      "name": "Preparar para Consulta Bitrix24",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -512,
+        392
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://YOUR_DOMAIN.bitrix24.com.br/rest/YOUR_USER_ID/YOUR_WEBHOOK_TOKEN/tasks.task.get.json?taskId={{ $json.bitrix_task_id }}",
+        "options": {}
+      },
+      "id": "b2c3d4e5-f6a7-4890-b1c2-d3e4f5a67890",
+      "name": "Buscar Status das Tarefas no Bitrix24",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -288,
+        392
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filtrar apenas alertas com tarefas concluídas para deletar\nconst items = $input.all();\nconst deletable = [];\n\nfor (const item of items) {\n  const taskStatus = item.json.result?.task?.status;\n  const taskId = item.json.result?.task?.id || item.json.bitrix_task_id;\n  const alertId = item.json.alert_id;\n  \n  if (!alertId) {\n    console.log('Aviso: Item sem ID de alerta, pulando...');\n    continue;\n  }\n  \n  // Status 5=Concluída, 6=Adiada, 7=Recusada\n  if (taskStatus === 5 || taskStatus === '5' || \n      taskStatus === 6 || taskStatus === '6' ||\n      taskStatus === 7 || taskStatus === '7') {\n    deletable.push({\n      json: { id: alertId }\n    });\n    console.log(`Tarefa ${taskId} está concluída (status ${taskStatus}), alerta ${alertId} pode ser deletado`);\n  } else {\n    console.log(`Tarefa ${taskId} está ativa (status ${taskStatus}), alerta ${alertId} será preservado`);\n  }\n}\n\nconsole.log(`Total de alertas com tarefas concluídas para deletar: ${deletable.length}`);\nreturn deletable;"
+      },
+      "id": "c3d4e5f6-a7b8-4890-c2d3-e4f5a6b78901",
+      "name": "Filtrar Tarefas Concluídas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        392
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "d4e5f6a7-b8c9-4890-d3e4-f5a6b7c89012",
+      "name": "Mesclar Alertas Deletáveis",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        48,
+        492
+      ]
     }
   ],
   "pinData": {},
@@ -831,6 +1345,11 @@
             "node": "Enviar para Bitrix24",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Verificar Tarefas Existentes Localmente",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -872,6 +1391,24 @@
       "main": [
         [
           {
+            "node": "Separar Alertas com Task ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar Alertas com Task ID": {
+      "main": [
+        [
+          {
+            "node": "Preparar para Consulta Bitrix24",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "🧹 Lógica de Exclusão Inteligente",
             "type": "main",
             "index": 0
@@ -879,7 +1416,51 @@
         ]
       ]
     },
+    "Preparar para Consulta Bitrix24": {
+      "main": [
+        [
+          {
+            "node": "Buscar Status das Tarefas no Bitrix24",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Status das Tarefas no Bitrix24": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Tarefas Concluídas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Tarefas Concluídas": {
+      "main": [
+        [
+          {
+            "node": "Mesclar Alertas Deletáveis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "🧹 Lógica de Exclusão Inteligente": {
+      "main": [
+        [
+          {
+            "node": "Mesclar Alertas Deletáveis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mesclar Alertas Deletáveis": {
       "main": [
         [
           {
@@ -911,54 +1492,138 @@
           }
         ]
       ]
+    },
+    "Verificar Tarefas Existentes Localmente": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Itens para Verificação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Itens para Verificação": {
+      "main": [
+        [
+          {
+            "node": "Verificar Status da Tarefa no Bitrix24",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mesclar Itens sem Tarefa e Concluídas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Status da Tarefa no Bitrix24": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Tarefas Concluídas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mesclar Itens sem Tarefa e Concluídas": {
+      "main": [
+        [
+          {
+            "node": "Preparar Dados da Tarefa Bitrix24",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Dados da Tarefa Bitrix24": {
+      "main": [
+        [
+          {
+            "node": "Criar Tarefa no Bitrix24",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Tarefa no Bitrix24": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Alertas com ID da Tarefa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar Alertas com ID da Tarefa": {
+      "main": [
+        [
+          {
+            "node": "Salvar ID da Tarefa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "active": true,
+  "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "YOUR_VERSION_ID",
+  "versionId": "34302c08-7967-4bcc-a0a2-81888d1d907c",
   "meta": {
     "templateCredsSetupCompleted": true,
-    "instanceId": "YOUR_INSTANCE_ID"
+    "instanceId": "53cef58a3872eb3b9c02f1998d5b9e94fb9a8534fc365664cf33c26097e7e106"
   },
-  "id": "YOUR_WORKFLOW_ID",
+  "id": "CgGoMJVpXi76GikX",
   "tags": [
     {
-      "createdAt": "2025-09-01T12:43:54.504Z",
-      "updatedAt": "2025-09-01T12:43:54.504Z",
-      "id": "AgtxdbwVBxxPOCqY",
-      "name": "Bitrix"
-    },
-    {
-      "createdAt": "2025-10-20T18:59:02.004Z",
-      "updatedAt": "2025-10-20T18:59:02.004Z",
-      "id": "DWt6KVV3rrzaniKi",
-      "name": "memory"
-    },
-    {
-      "createdAt": "2025-10-20T18:58:43.093Z",
-      "updatedAt": "2025-10-20T18:58:43.093Z",
-      "id": "NYbsedFwVIeY4X6H",
+      "createdAt": "2025-10-21T12:02:15.986Z",
+      "updatedAt": "2025-10-21T12:02:15.986Z",
+      "id": "1dr7f43CkGQ4b9dz",
       "name": "data-table"
     },
     {
-      "createdAt": "2025-10-20T18:58:43.062Z",
-      "updatedAt": "2025-10-20T18:58:43.062Z",
-      "id": "cRNnvfvWZBzJR1o5",
+      "createdAt": "2025-10-21T11:58:18.292Z",
+      "updatedAt": "2025-10-21T11:58:18.292Z",
+      "id": "MT9uKT2pFVQsGiBj",
       "name": "security"
     },
     {
-      "createdAt": "2025-10-20T18:58:43.045Z",
-      "updatedAt": "2025-10-20T18:58:43.045Z",
-      "id": "komKmVq90DD9RlWP",
-      "name": "wazuh"
+      "createdAt": "2025-10-21T11:58:18.148Z",
+      "updatedAt": "2025-10-21T11:58:18.148Z",
+      "id": "cb9J02nA02EV8pa8",
+      "name": "ai-agent"
     },
     {
-      "createdAt": "2025-10-20T18:59:02.028Z",
-      "updatedAt": "2025-10-20T18:59:02.028Z",
-      "id": "wLHqTBQ2sQ5boLoz",
-      "name": "ai-agent"
+      "createdAt": "2025-10-21T11:58:18.222Z",
+      "updatedAt": "2025-10-21T11:58:18.222Z",
+      "id": "jYb9L4rBS3abSn7p",
+      "name": "memory"
+    },
+    {
+      "name": "Bitrix",
+      "id": "kQB8x1n93mz8BUTk",
+      "createdAt": "2025-10-22T14:32:02.638Z",
+      "updatedAt": "2025-10-22T14:32:02.638Z"
+    },
+    {
+      "createdAt": "2025-10-21T11:58:18.051Z",
+      "updatedAt": "2025-10-21T11:58:18.051Z",
+      "id": "vWQX0IXrrh7m52AV",
+      "name": "wazuh"
     }
   ]
 }

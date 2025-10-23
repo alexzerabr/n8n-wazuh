@@ -55,7 +55,7 @@ Um sistema inteligente de análise de alertas baseado em IA que:
 ┌─────────────┐         ┌──────────────┐         ┌─────────────┐
 │   Servidor  │ Webhook │  Workflow 1  │ Armazenar│ Tabela de  │
 │   Wazuh     ├────────►│    Coleta    ├────────►│   Dados     │
-│             │         │   de Alertas │         │             │
+│             │         │   de Alertas │         │ wazuh_alerts│
 └─────────────┘         └──────────────┘         └──────┬──────┘
                                                         │
                         ┌──────────────┐                │
@@ -70,13 +70,103 @@ Um sistema inteligente de análise de alertas baseado em IA que:
                         │ e Relatórios │
                         └──────┬───────┘
                                │
-                ┌──────────────┼──────────────┐
-                │              │              │
-         ┌──────▼──────┐ ┌────▼─────┐ ┌─────▼──────┐
-         │  Atualizar  │ │  Email   │ │  Limpeza   │
-         │  Vereditos  │ │ Relatório│ │ Inteligente│
-         │  na Tabela  │ │          │ │            │
-         └─────────────┘ └──────────┘ └────────────┘
+                ┌──────────────┼──────────────┬─────────────────┐
+                │              │              │                 │
+         ┌──────▼──────┐ ┌────▼─────┐ ┌─────▼──────┐  ┌──────▼────────┐
+         │  Atualizar  │ │  Email   │ │  Limpeza   │  │   Bitrix24    │
+         │  Vereditos  │ │ Relatório│ │ Inteligente│  │Criar Tarefas  │
+         │  na Tabela  │ │          │ │            │  │   Críticas    │
+         └─────────────┘ └──────────┘ └────────────┘  └───────────────┘
+```
+
+### Fluxo Completo Detalhado
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     WORKFLOW 2 - ANÁLISE E AÇÕES                 │
+└──────────────────────────────────────────────────────────────────┘
+
+Trigger (6h)
+  ↓
+Buscar Alertas Não Processados
+  ↓
+Agrupar por Agente + Regra
+  ↓
+Carregar Memória (últimos 5 vereditos/host)
+  ↓
+Análise com OpenAI GPT
+  ↓
+Agregar Resultados
+  ├──→ Gerar Relatório HTML → Email
+  ├──→ Atualizar Vereditos → Tabela de Dados
+  ├──→ Bitrix24: Verificar Duplicatas
+  │       ↓
+  │    ┌─────────────────────────────────┐
+  │    │ Buscar Tarefas Existentes (DB)  │
+  │    └─────────────┬───────────────────┘
+  │                  ↓
+  │    ┌─────────────────────────────────┐
+  │    │ Tem task_id local?              │
+  │    │  ├─ SIM → Verificar Status      │
+  │    │  │         no Bitrix24           │
+  │    │  │           ↓                   │
+  │    │  │    Status Ativo? → Ignorar   │
+  │    │  │    Status Concluído? → Criar │
+  │    │  │                                │
+  │    │  └─ NÃO → Criar Nova Tarefa     │
+  │    └─────────────┬───────────────────┘
+  │                  ↓
+  │    ┌─────────────────────────────────┐
+  │    │ Preparar Dados da Tarefa        │
+  │    │ - Título: [WAZUH] Agent Name    │
+  │    │ - Responsável: ID 885           │
+  │    │ - Participantes: IDs 95, 97     │
+  │    │ - Observador: ID 51             │
+  │    │ - Grupo: ID 35                  │
+  │    │ - Tags: Wazuh, Critico          │
+  │    └─────────────┬───────────────────┘
+  │                  ↓
+  │    ┌─────────────────────────────────┐
+  │    │ Criar Tarefa no Bitrix24        │
+  │    │ (tasks.task.add.json)           │
+  │    └─────────────┬───────────────────┘
+  │                  ↓
+  │    ┌─────────────────────────────────┐
+  │    │ Salvar task_id na Tabela        │
+  │    │ (campo: bitrix_task_id)         │
+  │    └─────────────────────────────────┘
+  │
+  └──→ Limpeza Inteligente
+       ↓
+    ┌─────────────────────────────────────┐
+    │ Buscar Alertas para Limpeza         │
+    └─────────────┬───────────────────────┘
+                  ↓
+    ┌─────────────────────────────────────┐
+    │ Separar Alertas (IF Node)           │
+    │  ├─ COM bitrix_task_id              │
+    │  │    ↓                              │
+    │  │ Preparar para Consulta            │
+    │  │    ↓                              │
+    │  │ Buscar Status no Bitrix24         │
+    │  │    ↓                              │
+    │  │ Filtrar Tarefas Concluídas        │
+    │  │    ↓                              │
+    │  │ Mesclar ────────┐                 │
+    │  │                 │                 │
+    │  └─ SEM bitrix_task_id               │
+    │       ↓                              │
+    │    Lógica Normal de Exclusão        │
+    │       ↓                              │
+    │    Mesclar ─────────┘                │
+    └─────────────┬───────────────────────┘
+                  ↓
+    ┌─────────────────────────────────────┐
+    │ Excluir Alertas Antigos             │
+    │ - Tarefas Concluídas: SIM           │
+    │ - Tarefas Ativas: NÃO (preserva)   │
+    │ - Sem task_id: Aplica regra normal  │
+    └─────────────────────────────────────┘
 ```
 
 ### Fluxo de Dados
@@ -157,6 +247,8 @@ Um sistema inteligente de análise de alertas baseado em IA que:
 | `verdict_confidence` | string | Nível de confiança | `Alta`, `Média`, `Baixa` |
 | `ai_summary` | string | Resumo da análise | `Tentativas legítimas de login falhado...` |
 | `analyzed_at` | datetime | Timestamp da análise | `2025-10-13T15:00:00Z` |
+| **Integração Bitrix24** | | | |
+| `bitrix_task_id` | string | ID da tarefa criada | `55035` |
 
 ---
 
@@ -166,12 +258,17 @@ Um sistema inteligente de análise de alertas baseado em IA que:
 > Os arquivos JSON dos workflows contêm placeholders que devem ser substituídos por suas credenciais reais:
 > - `YOUR_DATATABLE_ID` → ID da sua tabela de dados
 > - `YOUR_PROJECT_ID` → ID do seu projeto n8n
-> - `YOUR_WEBHOOK_TOKEN` → Token único para o webhook
+> - `YOUR_WEBHOOK_TOKEN` → Token único para o webhook (Wazuh e Bitrix24)
 > - `YOUR_HEADER_AUTH_ID` → ID da credencial de autenticação
 > - `YOUR_OPENAI_CREDENTIAL_ID` → ID da credencial OpenAI
 > - `YOUR_SMTP_CREDENTIAL_ID` → ID da credencial SMTP
 > - `YOUR_DOMAIN.bitrix24.com.br` → Seu domínio Bitrix24
 > - `YOUR_USER_ID` → Seu ID de usuário Bitrix24
+> - `YOUR_GROUP_ID` → ID do grupo/projeto no Bitrix24 (ex: 35)
+> - `YOUR_RESPONSIBLE_ID` → ID do usuário responsável (ex: 885)
+> - `YOUR_ACCOMPLICE_ID_1` → ID do primeiro participante (ex: 95)
+> - `YOUR_ACCOMPLICE_ID_2` → ID do segundo participante (ex: 97)
+> - `YOUR_AUDITOR_ID` → ID do observador (ex: 51)
 > - `chatYOUR_CHAT_ID` → ID do chat Bitrix24
 > - `your-email@example.com` → Seu endereço de email
 
@@ -205,6 +302,7 @@ Um sistema inteligente de análise de alertas baseado em IA que:
 | `verdict_confidence` | String | - |
 | `ai_summary` | String | - |
 | `analyzed_at` | Date & Time | - |
+| `bitrix_task_id` | String | - |
 
 5. Clique em **Save** para criar a tabela
 
@@ -907,35 +1005,156 @@ console.log('=== FIM DEBUG ===');
 
 ### Visão Geral
 
-O sistema possui integração com Bitrix24 para envio de alertas individuais em tempo real via chat. Enquanto o email envia um relatório consolidado, o Bitrix24 envia cada alerta analisado separadamente para um chat específico.
+O sistema possui integração completa com Bitrix24 para **criação automática de tarefas** para alertas críticos de segurança. A integração inclui:
 
-### Fluxo de Envio
+- ✅ **Criação de Tarefas**: Alertas críticos geram tarefas automaticamente
+- ✅ **Detecção de Duplicatas**: Verifica se já existe tarefa ativa antes de criar nova
+- ✅ **Gestão Inteligente**: Preserva alertas com tarefas ativas, remove alertas de tarefas concluídas
+- ✅ **Atribuição Automática**: Responsável, participantes, observadores e tags configuráveis
+- ✅ **Rastreamento Bidirecional**: Salva ID da tarefa no banco de dados para referência
+
+### Fluxo de Criação de Tarefas
 
 ```
 Agregar Todos os Resultados
     ├→ Gerar Relatório HTML → Enviar Email (consolidado)
-    └→ Gerar Alertas Bitrix → Enviar para Bitrix24 (individual)
+    ├→ Atualizar Vereditos → Salvar na Tabela
+    └→ Bitrix24: Criação de Tarefas Críticas
+         ↓
+      Verificar Duplicatas
+         ├─ Buscar task_id local
+         ├─ Se existe: Verificar status no Bitrix24
+         │    ├─ Ativa (2,3,4): Ignorar
+         │    └─ Concluída (5,6,7): Criar nova
+         └─ Se não existe: Criar tarefa
+              ↓
+           Criar Tarefa
+              ↓
+           Salvar task_id
 ```
 
-### Configuração do Webhook
+### Configuração da API Bitrix24
 
-**URL do Webhook Bitrix24:**
+**URL Base do Webhook:**
 ```
-https://YOUR_DOMAIN.bitrix24.com.br/rest/YOUR_USER_ID/YOUR_WEBHOOK_TOKEN/im.message.add.json
+https://YOUR_DOMAIN.bitrix24.com.br/rest/YOUR_USER_ID/YOUR_WEBHOOK_TOKEN/
 ```
 
-**Chat de Destino:**
-- Chat ID: `chatYOUR_CHAT_ID`
+**Endpoints Utilizados:**
 
-**Método:** POST
+1. **Criar Tarefa** (tasks.task.add.json)
+   - Método: POST
+   - Cria nova tarefa no Bitrix24
 
-**Parâmetros:**
+2. **Verificar Status da Tarefa** (tasks.task.get.json)
+   - Método: GET
+   - Parâmetro: `taskId=TASK_ID`
+   - Retorna status atual da tarefa
+
+**Como obter o Webhook:**
+1. No Bitrix24, vá em **Aplicativos** → **Webhooks**
+2. Crie novo webhook de entrada
+3. Selecione permissões: **tasks** (Tarefas) e **im** (Mensagens)
+4. Copie a URL gerada
+
+**Como obter IDs de Usuários e Grupos:**
+1. **Usuários**: No Bitrix24, vá no perfil do usuário, o ID aparece na URL: `/company/personal/user/ID/`
+2. **Grupos**: Acesse o grupo/projeto, o ID aparece na URL: `/workgroups/group/ID/`
+3. **Chat**: No chat, clique em configurações, o ID aparece como `chat123`
+
+**Teste de Conexão:**
+```bash
+curl "https://YOUR_DOMAIN.bitrix24.com.br/rest/YOUR_USER_ID/YOUR_WEBHOOK_TOKEN/user.current.json"
+```
+Deve retornar dados do usuário atual se o webhook estiver correto.
+
+### Configuração da Tarefa
+
+**Estrutura da Tarefa Criada:**
 ```json
 {
-  "DIALOG_ID": "chatYOUR_CHAT_ID",
-  "MESSAGE": "Mensagem formatada em BBCode"
+  "TITLE": "[WAZUH] Alerta Crítico de Segurança - agent_name",
+  "DESCRIPTION": "Análise completa do alerta em BBCode",
+  "GROUP_ID": "35",
+  "RESPONSIBLE_ID": "885",
+  "ACCOMPLICES": ["95", "97"],
+  "AUDITORS": ["51"],
+  "TAGS": ["Wazuh", "Critico"]
 }
 ```
+
+**Campos Configuráveis:**
+- `GROUP_ID`: ID do grupo/projeto no Bitrix24
+- `RESPONSIBLE_ID`: ID do usuário responsável
+- `ACCOMPLICES`: Array de IDs de participantes
+- `AUDITORS`: Array de IDs de observadores
+- `TAGS`: Tags para categorização
+
+### Detecção de Duplicatas
+
+O sistema implementa uma lógica inteligente para evitar criar tarefas duplicadas:
+
+**Critérios de Verificação:**
+1. **Busca Local**: Procura por `bitrix_task_id` no banco de dados
+   - Chave: `agent_name` + `rule_id` + `rule_level`
+   
+2. **Verificação de Status**: Se encontrado, consulta status no Bitrix24
+   - **Status 2** (Em andamento) → **NÃO cria** nova tarefa
+   - **Status 3** (Pendente) → **NÃO cria** nova tarefa
+   - **Status 4** (Aguardando controle) → **NÃO cria** nova tarefa
+   - **Status 5** (Concluída) → **CRIA** nova tarefa
+   - **Status 6** (Adiada) → **CRIA** nova tarefa
+   - **Status 7** (Recusada) → **CRIA** nova tarefa
+
+3. **Sem Registro Local**: Cria nova tarefa normalmente
+
+**Exemplo de Fluxo:**
+```
+Nova Vulnerabilidade CVE-2025-XXXX em hubsoft.io
+  ↓
+Buscar: agent_name=hubsoft.io, rule_id=23506
+  ↓
+Encontrado: bitrix_task_id=55035
+  ↓
+Consultar Bitrix24: tasks.task.get.json?taskId=55035
+  ↓
+Status = 2 (Em andamento)
+  ↓
+RESULTADO: Tarefa ativa encontrada, não criar duplicata
+```
+
+### Limpeza Inteligente de Alertas
+
+O sistema preserva alertas com tarefas ativas e remove apenas alertas de tarefas concluídas:
+
+**Regras de Limpeza:**
+1. **Alerta COM tarefa ATIVA** (status 2,3,4)
+   - ✅ **PRESERVA** o alerta no banco de dados
+   - Necessário para detecção de duplicatas
+
+2. **Alerta COM tarefa CONCLUÍDA** (status 5,6,7)
+   - ✅ **PODE deletar** após período de retenção
+   - Tarefa já foi finalizada, não precisa preservar
+
+3. **Alerta SEM bitrix_task_id**
+   - ✅ **Aplica regra normal** de retenção (3 dias)
+
+**Benefícios:**
+- 🔒 Previne tarefas duplicadas
+- 🧹 Mantém banco de dados limpo
+- 📊 Preserva apenas dados necessários
+- ⚡ Otimiza performance
+
+### Status de Tarefas Bitrix24
+
+| Status | Valor | Descrição | Ação do Sistema |
+|--------|-------|-----------|-----------------|
+| 🔵 Em andamento | 2 | Tarefa sendo executada | Preserva alerta |
+| ⏸️ Pendente | 3 | Aguardando início | Preserva alerta |
+| ⏳ Aguardando | 4 | Dependência de controle | Preserva alerta |
+| ✅ Concluída | 5 | Tarefa finalizada | Pode deletar alerta |
+| 📅 Adiada | 6 | Tarefa postponada | Pode deletar alerta |
+| ❌ Recusada | 7 | Tarefa cancelada | Pode deletar alerta |
 
 ### Formato BBCode
 
@@ -1193,6 +1412,41 @@ Sugestões são bem-vindas:
 
 ---
 
+## 📝 Changelog
+
+### Versão 3.0 - Integração Bitrix24 com Tarefas (Outubro 2025)
+
+**Novidades:**
+- ✅ **Criação Automática de Tarefas**: Alertas críticos geram tarefas automaticamente no Bitrix24
+- ✅ **Detecção Inteligente de Duplicatas**: Verifica tarefas existentes antes de criar novas
+- ✅ **Limpeza Inteligente Aprimorada**: Preserva alertas com tarefas ativas, remove apenas tarefas concluídas
+- ✅ **Título Personalizado**: Tarefas com identificação por agent_name
+- ✅ **Campo bitrix_task_id**: Novo campo no banco de dados para rastreamento bidirecional
+
+**Arquitetura:**
+- 9 novos nós no workflow para gerenciamento de tarefas
+- Integração com API Bitrix24 (tasks.task.add, tasks.task.get)
+- Fluxo de limpeza bifurcado (com/sem task_id)
+- Validação de status de tarefas (ativas vs concluídas)
+
+**Atribuições Configuráveis:**
+- Grupo/Projeto
+- Responsável
+- Participantes (múltiplos)
+- Observadores
+- Tags
+
+### Versão 2.0 - OpenAI + SMTP (Outubro 2025)
+
+**Recursos:**
+- Análise com OpenAI GPT-4 Turbo
+- Sistema de memória com últimos 5 vereditos
+- Relatórios HTML profissionais por email
+- Limpeza inteligente de alertas
+- Reconhecimento de padrões
+
+---
+
 **Última Atualização:** Outubro 2025  
-**Versão:** 2.0 (OpenAI + SMTP)  
-**Compatibilidade:** n8n v1.0+, Wazuh v4.0+
+**Versão:** 3.0 (OpenAI + SMTP + Bitrix24 Tasks)  
+**Compatibilidade:** n8n v1.0+, Wazuh v4.0+, Bitrix24
